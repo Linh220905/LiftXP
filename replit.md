@@ -1,6 +1,6 @@
-# [Project name]
+# Train XP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Train XP turns real gym workouts into a progression game with fast set logging, XP, lift ranks, streaks, and social motivation.
 
 ## Run & Operate
 
@@ -22,15 +22,24 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/train-xp` — Expo mobile app and local AsyncStorage state.
+- `artifacts/train-xp/context/AppState.tsx` — persisted onboarding, player stats, and workout completion state.
+- `artifacts/train-xp/app` — onboarding, tab navigation, home, workout logger, rank, social, and profile screens.
+- `artifacts/train-xp/constants/colors.ts` — shared Train XP palette.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The first build is frontend-first and uses AsyncStorage so the complete first-session loop works without account setup.
+- The core loop is intentionally direct: onboarding sends the user into a templated Push workout, then completion updates XP, level, streak, PRs, and volume.
+- Exercise rank copy is framed as game progression, not scientific strength measurement.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Dark-first fitness game experience with original comet companion mascot.
+- Onboarding personalizes experience and goal, then begins the first workout.
+- Home communicates level, XP, streak, daily quest, and lift progression.
+- Workout logger supports editable weight/reps, one-tap set completion, add set, rest timer, and completion rewards.
+- Rank, social leaderboard/activity, and profile/achievement screens provide the supporting progression loop.
 
 ## User preferences
 

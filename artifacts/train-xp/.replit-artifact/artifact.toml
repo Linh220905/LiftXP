@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "Train XP"
+description = "A mobile-first fitness progression game that turns real workouts into XP, ranks, streaks, and motivating daily quests for beginner and intermediate lifters."
+version = "1.0.0"
+id = "artifacts/train-xp"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 19245
+
+[services.development]
+run = "pnpm --filter @workspace/train-xp run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/train-xp", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/train-xp", "run", "serve" ]
+
+[services.env]
+PORT = "19245"
+BASE_PATH = "/"

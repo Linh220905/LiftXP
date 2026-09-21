@@ -1,0 +1,1028 @@
+You are a senior product designer and mobile app engineer.
+
+Build a polished mobile-first fitness app inspired by the core product loop of
+modern gamified workout trackers.
+
+IMPORTANT:
+- Do NOT copy any existing app's name, logo, mascot, illustrations, exact UI,
+  text, or visual assets.
+- Take inspiration from the product mechanics: workout logging, exercise ranks,
+  XP, streaks, quests, achievements, mascot interaction and leaderboards.
+- The app should feel like a modern fitness game, not a generic calorie tracker.
+- Keep the MVP focused. Do not add unnecessary AI features.
+
+==================================================
+1. PRODUCT CONCEPT
+==================================================
+
+The app turns gym workouts into a progression game.
+
+Core loop:
+
+Onboarding
+→ create fitness profile
+→ create/select workout
+→ perform workout
+→ log sets/reps/weight
+→ finish workout
+→ calculate progression
+→ earn XP
+→ potentially rank up
+→ maintain streak
+→ complete quests
+→ compete on leaderboard
+→ return for next workout.
+
+Core promise:
+
+"Train. Earn XP. Rank up."
+
+The user should feel that every workout contributes to a persistent
+character progression.
+
+==================================================
+2. TARGET USER
+==================================================
+
+Primary users:
+
+- Beginner gym users
+- Intermediate lifters
+- People who enjoy competition
+- People who like game-like progression
+- People who already track workouts manually
+- Users motivated by streaks, achievements and rankings
+
+The app should NOT require users to be professional athletes.
+
+A beginner must still feel meaningful progression.
+
+==================================================
+3. BRAND / VISUAL DIRECTION
+==================================================
+
+Create an original brand identity.
+
+Style:
+
+- Modern
+- Premium
+- Sporty
+- Dark-first
+- Clean
+- Minimal
+- Slightly game-like
+- High contrast
+- Large numbers
+- Strong progression feedback
+- Avoid overly complicated dashboards
+
+The app should feel like:
+
+fitness app + game + social competition.
+
+Do NOT make it look like a generic bodybuilding app.
+
+==================================================
+4. ORIGINAL MASCOT
+==================================================
+
+Create one original fitness mascot.
+
+The mascot is a small friendly fitness companion.
+
+Characteristics:
+
+- Cute but not childish
+- Athletic
+- Expressive
+- Simple silhouette
+- Easy to animate
+- Original design
+- Can appear throughout onboarding and the app
+
+The mascot should have different emotional states:
+
+1. Welcome
+2. Excited
+3. Encouraging
+4. Celebrating
+5. Impressed
+6. Disappointed when a streak is broken
+7. Celebrating a PR
+8. Celebrating a rank-up
+
+The mascot is NOT the main focus of every screen.
+
+It should act as the user's fitness companion.
+
+Example:
+
+After first workout:
+
+"Let's go! You just earned your first XP."
+
+After PR:
+
+"NEW PR! 🔥"
+
+After rank up:
+
+"You're getting stronger."
+
+After missed streak:
+
+"Don't worry. Let's start again."
+
+==================================================
+5. ONBOARDING
+==================================================
+
+The onboarding should follow the general product philosophy of a
+gamified fitness app:
+
+First sell the value.
+Then personalize the experience.
+Then introduce the mascot.
+Then create the user's starting profile.
+Then get the user into their first workout quickly.
+
+Target onboarding length:
+8–12 screens.
+
+Do NOT make onboarding unnecessarily long.
+
+------------------------------------------
+SCREEN 1 — WELCOME
+------------------------------------------
+
+Headline:
+
+"Turn every workout into progress."
+
+Subtext:
+
+"Track your lifts, earn XP, climb the ranks."
+
+Mascot appears.
+
+CTA:
+
+"Get Started"
+
+------------------------------------------
+SCREEN 2 — VALUE PROPOSITION
+------------------------------------------
+
+Show three benefits:
+
+🏋️ Track your workouts
+🏆 Rank your lifts
+🔥 Build your streak
+
+CTA:
+
+"Let's Go"
+
+------------------------------------------
+SCREEN 3 — FITNESS EXPERIENCE
+------------------------------------------
+
+Question:
+
+"What's your experience?"
+
+Options:
+
+- Just starting
+- Less than 6 months
+- 6–12 months
+- 1–3 years
+- 3+ years
+
+Use this information to personalize the starting experience.
+
+------------------------------------------
+SCREEN 4 — GOAL
+------------------------------------------
+
+Question:
+
+"What are you training for?"
+
+Options:
+
+- Build muscle
+- Get stronger
+- Lose fat
+- Improve fitness
+- Stay consistent
+
+Allow one primary goal.
+
+------------------------------------------
+SCREEN 5 — GENDER
+------------------------------------------
+
+Question:
+
+"What's your gender?"
+
+Options:
+
+- Male
+- Female
+- Prefer not to say
+
+This is used only where necessary for strength-ranking calculations.
+
+------------------------------------------
+SCREEN 6 — AGE
+------------------------------------------
+
+Question:
+
+"How old are you?"
+
+Use a clean number picker/input.
+
+------------------------------------------
+SCREEN 7 — BODY STATS
+------------------------------------------
+
+Collect:
+
+- Height
+- Weight
+
+These values are used for personalized progression/ranking.
+
+Keep the UI extremely simple.
+
+------------------------------------------
+SCREEN 8 — MASCOT / PERSONALITY
+------------------------------------------
+
+Introduce the mascot.
+
+Example:
+
+"Meet your training companion."
+
+Mascot animation.
+
+Allow the user to choose a simple mascot style/color variant if desired.
+
+Do NOT overbuild character customization in MVP.
+
+------------------------------------------
+SCREEN 9 — YOUR STARTING PROFILE
+------------------------------------------
+
+Show:
+
+YOUR FITNESS PROFILE
+
+Experience: Beginner
+Goal: Build Muscle
+
+Starting Level:
+LEVEL 1
+
+Initial stats:
+
+Strength
+Consistency
+Experience
+
+These are game stats, not medical measurements.
+
+Mascot reacts positively.
+
+CTA:
+
+"Start Training"
+
+------------------------------------------
+SCREEN 10 — FIRST WORKOUT
+------------------------------------------
+
+Prompt:
+
+"Let's create your first workout."
+
+Options:
+
+- Create my own
+- Choose a template
+
+Templates:
+
+Push
+Pull
+Legs
+Full Body
+
+The user can skip templates and create their own workout.
+
+==================================================
+6. AUTHENTICATION
+==================================================
+
+Do NOT force account creation before the user experiences the product.
+
+Allow the user to begin the first workout.
+
+After the user completes their first meaningful workout or earns their
+first rank:
+
+Show:
+
+"Save your progress"
+
+Options:
+
+- Continue with Google
+- Continue with Apple
+- Email
+
+The account should preserve:
+
+- workouts
+- XP
+- levels
+- ranks
+- streak
+- achievements
+- profile
+- leaderboard identity
+
+==================================================
+7. HOME SCREEN
+==================================================
+
+Home should immediately communicate progression.
+
+Example:
+
+--------------------------------
+LEVEL 4
+██████████░░░ 820 / 1000 XP
+
+🔥 7 DAY STREAK
+
+Today's Quest
+
+Complete today's workout
++100 XP
+
+[ START WORKOUT ]
+
+Your Progress
+
+Bench Press       Silver III
+Squat              Bronze II
+Chest              Level 8
+Back               Level 6
+
+Mascot
+"Ready for today's workout?"
+--------------------------------
+
+Primary action:
+START WORKOUT
+
+==================================================
+8. WORKOUT SYSTEM
+==================================================
+
+Users can create their own workout.
+
+Workout consists of:
+
+- Workout name
+- Exercises
+- Sets
+- Reps
+- Weight
+- Optional RPE
+- Optional notes
+
+Users can reorder exercises.
+
+Users can add/remove exercises.
+
+Users can save workout templates.
+
+Example:
+
+PUSH DAY
+
+Bench Press
+Incline Dumbbell Press
+Shoulder Press
+Lateral Raise
+Triceps Pushdown
+
+==================================================
+9. WORKOUT LOGGER
+==================================================
+
+This is one of the most important screens.
+
+Logging must be extremely fast.
+
+Example:
+
+BENCH PRESS
+
+Set 1
+60 kg × 8     ✓
+
+Set 2
+60 kg × 8     ✓
+
+Set 3
+65 kg × 6     ✓
+
+Show previous workout values when available.
+
+Example:
+
+Last time:
+60 kg × 8
+
+This time:
+[ 60 ] kg × [ 9 ]
+
+Allow one-tap set completion.
+
+Provide:
+
+- Rest timer
+- Previous performance
+- Current set
+- Add set
+- Delete set
+- Skip exercise
+
+At the bottom:
+
+"Finish Workout"
+
+==================================================
+10. WORKOUT COMPLETION
+==================================================
+
+When the user taps Finish Workout:
+
+Show a strong celebration screen.
+
+Example:
+
+WORKOUT COMPLETE 🎉
+
++180 XP
+
+Duration
+58 min
+
+Exercises
+5
+
+Sets
+16
+
+Volume
+4,820 kg
+
+Mascot celebrates.
+
+Then calculate:
+
+- XP gained
+- streak
+- PR
+- exercise progression
+- rank progression
+- quests completed
+- achievements unlocked
+
+==================================================
+11. EXERCISE RANKING SYSTEM
+==================================================
+
+Every supported exercise can have a rank.
+
+Example:
+
+BENCH PRESS
+
+SILVER III
+
+Progress:
+██████████░░
+
+Current performance:
+65 kg × 6
+
+Next rank:
+70 kg × 6
+
+Ranks should be understandable.
+
+Example rank ladder:
+
+Bronze
+Silver
+Gold
+Platinum
+Diamond
+Master
+Elite
+
+The exact number of tiers can be adjusted.
+
+Ranking should use:
+
+- bodyweight
+- gender where appropriate
+- weight
+- reps
+- estimated 1RM
+- exercise-specific standards
+
+Do NOT pretend the ranking is scientifically perfect.
+
+It is a game progression system based on strength performance.
+
+For exercises where reliable ranking cannot be calculated,
+show progression/XP instead of a misleading rank.
+
+==================================================
+12. XP SYSTEM
+==================================================
+
+Users earn XP from meaningful actions.
+
+Examples:
+
+Complete workout
++100 XP
+
+Complete a difficult workout
++20 XP
+
+Set a new PR
++50 XP
+
+Rank up
++100 XP
+
+Complete daily quest
++50 XP
+
+Complete weekly quest
++200 XP
+
+Maintain streak
++20 XP
+
+Do NOT allow easy XP farming.
+
+XP should primarily reward actual completed training.
+
+==================================================
+13. PLAYER LEVEL
+==================================================
+
+The player has a global level.
+
+Example:
+
+LEVEL 12
+
+1,240 / 1,500 XP
+
+Level increases as the user trains.
+
+Level should represent overall engagement/progression,
+not raw physical strength.
+
+==================================================
+14. STREAK
+==================================================
+
+Track workout consistency.
+
+Example:
+
+🔥 7 DAY STREAK
+
+The streak is based on meaningful workout activity.
+
+Do not require daily gym attendance.
+
+Allow reasonable rest days.
+
+Example:
+
+Train 3–5 times per week.
+
+The system should avoid punishing normal rest days.
+
+==================================================
+15. DAILY QUESTS
+==================================================
+
+Generate simple quests.
+
+Examples:
+
+"Complete today's workout"
++100 XP
+
+"Complete 12 sets"
++50 XP
+
+"Beat one previous performance"
++75 XP
+
+"Train chest"
++50 XP
+
+Quests reset periodically.
+
+==================================================
+16. WEEKLY CHALLENGES
+==================================================
+
+Examples:
+
+Train 4 times this week.
+
+Progress:
+3 / 4
+
+Reward:
++300 XP
+
+Other challenges:
+
+- Complete 20 sets
+- Set 2 PRs
+- Improve one lift
+- Maintain consistency
+- Complete 3 workouts
+
+==================================================
+17. ACHIEVEMENTS
+==================================================
+
+Examples:
+
+🏆 First Workout
+🏆 First PR
+🏆 10 Workouts
+🏆 50 Workouts
+🏆 100 Workouts
+🏆 First Rank Up
+🏆 Gold Rank
+🏆 7 Day Streak
+🏆 30 Day Streak
+🏆 10 PRs
+
+Achievement screen should visually feel rewarding.
+
+==================================================
+18. LEADERBOARD
+==================================================
+
+Create multiple leaderboard categories.
+
+Friends
+
+Country
+
+Global
+
+Gym
+
+The MVP can initially implement:
+
+Friends
+Global
+
+Gym can be added if location/gym infrastructure is ready.
+
+Leaderboard should NOT only reward strongest users.
+
+Include different categories:
+
+Strength
+XP
+Consistency
+Progress
+
+Example:
+
+THIS WEEK
+
+🥇 Minh       1,840 XP
+🥈 Linh       1,620 XP
+🥉 Nam        1,430 XP
+
+The goal is motivation, not simply showing who is strongest.
+
+==================================================
+19. SOCIAL PROFILE
+==================================================
+
+Profile shows:
+
+Avatar
+Username
+Level
+XP
+Streak
+
+Top ranks
+
+Achievements
+
+Workout statistics
+
+Example:
+
+LINH
+
+LEVEL 12
+
+🔥 8 DAY STREAK
+
+Bench Press
+Gold III
+
+Squat
+Silver II
+
+Deadlift
+Silver I
+
+47 Workouts
+
+12 PRs
+
+==================================================
+20. SOCIAL ACTIVITY
+==================================================
+
+MVP social feed can be simple.
+
+Examples:
+
+"Linh hit a new Bench Press PR 🔥"
+
+"Minh reached Gold on Squat 🏆"
+
+"Nam completed a 30-day streak 🔥"
+
+Users can react:
+
+❤️
+🔥
+👏
+
+Do not build a complicated messaging system in MVP.
+
+==================================================
+21. PROGRESSION / STATISTICS
+==================================================
+
+Show useful charts:
+
+- Workout frequency
+- Total volume
+- Strength progression
+- PR history
+- Exercise progression
+- Bodyweight history
+
+Keep statistics understandable.
+
+Avoid an overly complicated analytics dashboard.
+
+==================================================
+22. PROFILE / BODY MEASUREMENTS
+==================================================
+
+Allow optional tracking:
+
+- Weight
+- Body fat
+- Waist
+- Arm
+- Chest
+- Thigh
+
+Show history as charts.
+
+Do not require users to enter all measurements.
+
+==================================================
+23. NOTIFICATIONS
+==================================================
+
+Notifications should be contextual.
+
+Examples:
+
+"🔥 Your 7-day streak is alive."
+
+"Your weekly challenge is almost complete."
+
+"Your friend passed you on the leaderboard."
+
+"You have one workout left this week."
+
+Ask for notification permission only after explaining the benefit.
+
+==================================================
+24. NAVIGATION
+==================================================
+
+Bottom navigation:
+
+HOME
+WORKOUT
+RANK
+SOCIAL
+PROFILE
+
+Keep navigation simple.
+
+==================================================
+25. MVP DATA MODEL
+==================================================
+
+Core entities:
+
+User
+Profile
+Exercise
+Workout
+WorkoutExercise
+Set
+WorkoutTemplate
+ExerciseRank
+XPTransaction
+Level
+Quest
+Achievement
+UserAchievement
+Streak
+Leaderboard
+Friend
+Activity
+
+==================================================
+26. MVP MUST SUPPORT
+==================================================
+
+✓ Onboarding
+✓ Mascot
+✓ User profile
+✓ Goal selection
+✓ Experience selection
+✓ Basic body information
+✓ Create workout
+✓ Workout templates
+✓ Exercise database
+✓ Log sets
+✓ Weight/reps tracking
+✓ Previous workout comparison
+✓ Rest timer
+✓ Finish workout
+✓ XP
+✓ Player level
+✓ Exercise rank
+✓ PR detection
+✓ Streak
+✓ Daily quest
+✓ Weekly challenge
+✓ Achievements
+✓ Leaderboard
+✓ Basic social profile
+✓ Basic activity feed
+✓ Google/Apple/email authentication
+✓ Persistent cloud data
+
+==================================================
+27. DO NOT BUILD IN MVP
+==================================================
+
+Do NOT build:
+
+✗ AI personal trainer
+✗ AI workout generation
+✗ AI camera workout recognition
+✗ AI nutrition scanner
+✗ calorie tracking
+✗ meal tracking
+✗ wearable integration
+✗ Apple Watch
+✗ complex messaging
+✗ live gym competitions
+✗ advanced coaching
+✗ complicated avatar editor
+✗ complicated marketplace
+
+These can come later.
+
+==================================================
+28. MOST IMPORTANT PRODUCT PRINCIPLE
+==================================================
+
+The entire product should revolve around this loop:
+
+WORKOUT
+↓
+LOG SETS
+↓
+FINISH
+↓
+GET XP
+↓
+GET RANK / PR
+↓
+SEE PROGRESS
+↓
+SEE LEADERBOARD
+↓
+WANT TO TRAIN AGAIN
+
+Every major UI decision should strengthen this loop.
+
+The app should never feel like a spreadsheet.
+
+It should feel like:
+
+"I am leveling up my real-life character by going to the gym."
+
+==================================================
+29. FIRST-TIME USER EXPERIENCE
+==================================================
+
+The first session is extremely important.
+
+The user should reach their first workout quickly.
+
+Ideal flow:
+
+Welcome
+→ personalization
+→ mascot introduction
+→ choose/create workout
+→ log first set
+→ finish workout
+→ FIRST XP
+→ FIRST RANK
+→ celebration
+→ save account
+→ Home
+
+The user must understand the product's core value
+within the first session.
+
+==================================================
+30. DESIGN QUALITY
+==================================================
+
+Prioritize:
+
+- fast interactions
+- large tap targets
+- smooth transitions
+- satisfying rank-up animation
+- XP animation
+- streak animation
+- mascot reactions
+- clear typography
+- minimal text
+- strong hierarchy
+- polished empty states
+- loading states
+- error states
+
+Avoid:
+
+- excessive gradients
+- generic AI aesthetics
+- excessive cards
+- overly colorful UI
+- clutter
+- tiny text
+- unnecessary onboarding questions
+
+The result should look like a serious commercial fitness product
+with a game layer, not a student project.
