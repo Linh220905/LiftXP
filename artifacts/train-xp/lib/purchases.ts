@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import Purchases, { type CustomerInfo, type PurchasesPackage, LOG_LEVEL } from 'react-native-purchases';
 
 // Configuration keys - can be supplied via EXPO_PUBLIC_* env vars
@@ -13,7 +14,12 @@ export const PRO_ENTITLEMENT_ID = 'trainxp_pro';
 let isConfigured = false;
 
 export async function initPurchases(userId?: string): Promise<boolean> {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+  const isExpoGo =
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+    (Constants as any).appOwnership === 'expo';
+
+  if (isExpoGo || (Platform.OS !== 'ios' && Platform.OS !== 'android')) {
+    // Native IAP stores are unavailable inside Expo Go / Web without native dev client
     return false;
   }
 
