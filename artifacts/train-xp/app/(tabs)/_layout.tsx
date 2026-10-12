@@ -2,22 +2,76 @@ import React from 'react';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useI18n } from '@/lib/i18n';
 
 export default function TabLayout() {
   const colors = useColors();
+  const { t } = useI18n();
+
   return (
-    <Tabs screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: colors.tint,
-      tabBarInactiveTintColor: colors.mutedForeground,
-      tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border, height: 82, paddingTop: 8, paddingBottom: 21 },
-      tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
-    }}>
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} /> }} />
-      <Tabs.Screen name="workout" options={{ title: 'Workout', tabBarIcon: ({ color, size }) => <Feather name="plus-circle" color={color} size={size} /> }} />
-      <Tabs.Screen name="rank" options={{ title: 'Rank', tabBarIcon: ({ color, size }) => <Feather name="bar-chart-2" color={color} size={size} /> }} />
-      <Tabs.Screen name="social" options={{ title: 'Social', tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} /> }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} /> }} />
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#38BDF8',
+        tabBarInactiveTintColor: '#64748B',
+        tabBarStyle: {
+          backgroundColor: '#080C14',
+          borderTopColor: '#1E293B',
+          height: 84,
+          paddingTop: 8,
+          paddingBottom: 22,
+        },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: t.tabs.home,
+          tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="plan"
+        options={{
+          title: t.tabs.plan,
+          tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="workout"
+        options={{
+          title: t.tabs.workout,
+          tabBarIcon: ({ color, size }) => <Feather name="plus-circle" color={color} size={size + 2} />,
+        }}
+      />
+      <Tabs.Screen
+        name="stats"
+        options={{
+          title: t.tabs.stats,
+          tabBarIcon: ({ color, size }) => <Feather name="bar-chart-2" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t.tabs.profile,
+          tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
+        }}
+      />
+      {/* Hidden legacy tab screens */}
+      <Tabs.Screen
+        name="rank"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="social"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

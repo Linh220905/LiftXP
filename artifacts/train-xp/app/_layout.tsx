@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Text, TextInput } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -14,9 +15,19 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppStateProvider } from '@/context/AppState';
+import { I18nProvider } from '@/lib/i18n';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+try {
+  (Text as any).defaultProps = (Text as any).defaultProps || {};
+  (Text as any).defaultProps.style = { fontFamily: 'Inter_500Medium' };
+  (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
+  (TextInput as any).defaultProps.style = { fontFamily: 'Inter_500Medium' };
+} catch {
+  // Ignore in environments where defaultProps is frozen
+}
 
 const queryClient = new QueryClient();
 
@@ -48,13 +59,15 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <AppStateProvider>
-            <GestureHandlerRootView>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </AppStateProvider>
+          <I18nProvider>
+            <AppStateProvider>
+              <GestureHandlerRootView>
+                <KeyboardProvider>
+                  <RootLayoutNav />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </AppStateProvider>
+          </I18nProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

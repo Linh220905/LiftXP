@@ -1,15 +1,23 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Train XP API Specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: profile
+    description: User and profile operations
+  - name: workout
+    description: Workout logging and history
+  - name: rank
+    description: Rank and progression tracking
+  - name: social
+    description: Leaderboards and activity feeds
+
 paths:
   /healthz:
     get:
@@ -24,6 +32,167 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [profile]
+      summary: Get user profile
+      description: Fetch active player profile and stats
+      responses:
+        "200":
+          description: Player profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+    patch:
+      operationId: updateProfile
+      tags: [profile]
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+
+  /onboarding:
+    post:
+      operationId: completeOnboarding
+      tags: [profile]
+      summary: Complete user onboarding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingRequest"
+      responses:
+        "200":
+          description: Onboarded user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+
+  /workouts/templates:
+    get:
+      operationId: getWorkoutTemplates
+      tags: [workout]
+      summary: Get workout templates
+      responses:
+        "200":
+          description: List of workout templates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutTemplatesResponse"
+
+  /workouts/finish:
+    post:
+      operationId: finishWorkout
+      tags: [workout]
+      summary: Finish and log a workout session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishWorkoutRequest"
+      responses:
+        "200":
+          description: Workout log result and XP progression
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutResultResponse"
+
+  /workouts/history:
+    get:
+      operationId: getWorkoutHistory
+      tags: [workout]
+      summary: Get user workout history
+      responses:
+        "200":
+          description: List of logged workouts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutHistoryResponse"
+
+  /ranks:
+    get:
+      operationId: getRanks
+      tags: [rank]
+      summary: Get player rank overview and exercise progression
+      responses:
+        "200":
+          description: Player rank breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RanksResponse"
+
+  /social/leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [social]
+      summary: Get weekly leaderboard
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [Friends, Global]
+            default: Friends
+      responses:
+        "200":
+          description: Leaderboard ranking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardResponse"
+
+  /social/feed:
+    get:
+      operationId: getSocialFeed
+      tags: [social]
+      summary: Get community activities feed
+      responses:
+        "200":
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SocialFeedResponse"
+
+  /social/activities/{id}/like:
+    post:
+      operationId: likeActivity
+      tags: [social]
+      summary: Like an activity item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeActivityResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +203,384 @@ components:
       required:
         - status
 
+    PlayerStats:
+      type: object
+      properties:
+        level:
+          type: integer
+        xp:
+          type: integer
+        xpToNext:
+          type: integer
+        streak:
+          type: integer
+        workouts:
+          type: integer
+        prs:
+          type: integer
+        totalVolume:
+          type: number
+      required:
+        - level
+        - xp
+        - xpToNext
+        - streak
+        - workouts
+        - prs
+        - totalVolume
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        handle:
+          type: string
+        displayName:
+          type: string
+        experience:
+          type: string
+        goal:
+          type: string
+        age:
+          type: string
+        height:
+          type: string
+        weight:
+          type: string
+      required:
+        - id
+        - handle
+        - displayName
+        - experience
+        - goal
+
+    UserProfileResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/UserProfile"
+        stats:
+          $ref: "#/components/schemas/PlayerStats"
+      required:
+        - profile
+        - stats
+
+    OnboardingRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        handle:
+          type: string
+        experience:
+          type: string
+          enum: ["Just starting", "Less than 6 months", "6–12 months", "1–3 years", "3+ years"]
+        goal:
+          type: string
+          enum: ["Build muscle", "Get stronger", "Lose fat", "Improve fitness", "Stay consistent"]
+        age:
+          type: string
+        height:
+          type: string
+        weight:
+          type: string
+      required:
+        - experience
+        - goal
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        experience:
+          type: string
+        goal:
+          type: string
+        age:
+          type: string
+        height:
+          type: string
+        weight:
+          type: string
+
+    WorkoutSetItem:
+      type: object
+      properties:
+        exerciseName:
+          type: string
+        setNumber:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: integer
+        isCompleted:
+          type: boolean
+      required:
+        - exerciseName
+        - setNumber
+        - weight
+        - reps
+        - isCompleted
+
+    FinishWorkoutRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        durationMinutes:
+          type: integer
+        sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutSetItem"
+      required:
+        - name
+        - durationMinutes
+        - sets
+
+    WorkoutResultResponse:
+      type: object
+      properties:
+        workoutId:
+          type: integer
+        xpEarned:
+          type: integer
+        duration:
+          type: string
+        exercisesCount:
+          type: integer
+        setsCount:
+          type: integer
+        totalVolume:
+          type: number
+        newPr:
+          type: boolean
+        rankedUp:
+          type: boolean
+        newStats:
+          $ref: "#/components/schemas/PlayerStats"
+      required:
+        - workoutId
+        - xpEarned
+        - duration
+        - exercisesCount
+        - setsCount
+        - totalVolume
+        - newPr
+        - rankedUp
+        - newStats
+
+    WorkoutTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        targetDescription:
+          type: string
+        targetSets:
+          type: integer
+        exercises:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              targetSets:
+                type: integer
+              targetReps:
+                type: string
+              suggestedWeight:
+                type: number
+            required:
+              - name
+              - targetSets
+              - targetReps
+      required:
+        - id
+        - name
+        - targetDescription
+        - targetSets
+        - exercises
+
+    WorkoutTemplatesResponse:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutTemplate"
+      required:
+        - templates
+
+    WorkoutHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        durationMinutes:
+          type: integer
+        xpEarned:
+          type: integer
+        totalSets:
+          type: integer
+        totalVolume:
+          type: number
+        completedAt:
+          type: string
+      required:
+        - id
+        - name
+        - durationMinutes
+        - xpEarned
+        - totalSets
+        - totalVolume
+        - completedAt
+
+    WorkoutHistoryResponse:
+      type: object
+      properties:
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutHistoryItem"
+      required:
+        - history
+
+    ExerciseRankItem:
+      type: object
+      properties:
+        name:
+          type: string
+        rank:
+          type: string
+        detail:
+          type: string
+        nextTarget:
+          type: string
+        progress:
+          type: number
+        colorKey:
+          type: string
+      required:
+        - name
+        - rank
+        - detail
+        - nextTarget
+        - progress
+        - colorKey
+
+    RanksResponse:
+      type: object
+      properties:
+        globalLevel:
+          type: integer
+        globalDivision:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExerciseRankItem"
+      required:
+        - globalLevel
+        - globalDivision
+        - exercises
+
+    LeaderboardItem:
+      type: object
+      properties:
+        rank:
+          type: integer
+        name:
+          type: string
+        initials:
+          type: string
+        detail:
+          type: string
+        xp:
+          type: string
+        xpNumber:
+          type: integer
+        colorKey:
+          type: string
+      required:
+        - rank
+        - name
+        - initials
+        - detail
+        - xp
+        - xpNumber
+        - colorKey
+
+    LeaderboardResponse:
+      type: object
+      properties:
+        scope:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardItem"
+      required:
+        - scope
+        - items
+
+    SocialFeedItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        detail:
+          type: string
+        timeAgo:
+          type: string
+        icon:
+          type: string
+        colorKey:
+          type: string
+        likesCount:
+          type: integer
+        isLiked:
+          type: boolean
+      required:
+        - id
+        - name
+        - detail
+        - timeAgo
+        - icon
+        - colorKey
+        - likesCount
+        - isLiked
+
+    SocialFeedResponse:
+      type: object
+      properties:
+        feed:
+          type: array
+          items:
+            $ref: "#/components/schemas/SocialFeedItem"
+      required:
+        - feed
+
+    LikeActivityResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        likesCount:
+          type: integer
+        isLiked:
+          type: boolean
+      required:
+        - id
+        - likesCount
+        - isLiked

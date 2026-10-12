@@ -1,0 +1,257 @@
+import { z } from 'zod';
+
+export const MuscleGroupSchema = z.enum([
+  'chest',
+  'back',
+  'shoulders',
+  'arms',
+  'abs',
+  'legs',
+  'glutes',
+]);
+
+export type MuscleGroup = z.infer<typeof MuscleGroupSchema>;
+
+export const ExerciseCategorySchema = z.enum(['gym', 'home', 'calisthenics']);
+export type ExerciseCategory = z.infer<typeof ExerciseCategorySchema>;
+
+export interface ExerciseDefinition {
+  id: string;
+  name: string;
+  vietnameseName: string;
+  category: ExerciseCategory;
+  equipment: string;
+  primaryMuscles: MuscleGroup[];
+  secondaryMuscles: MuscleGroup[];
+  description: string;
+  thumbnailUrl: string;
+  motionGifUrl?: string;
+}
+
+export const EXERCISE_REGISTRY: ExerciseDefinition[] = [
+  // ================= 1. GYM PHÒNG TẬP & MÁY =================
+  {
+    id: 'barbell_bench_press',
+    name: 'Barbell Bench Press',
+    vietnameseName: 'Đẩy ngực ngang đòn tạ',
+    category: 'gym',
+    equipment: 'Barbell / Flat Bench',
+    primaryMuscles: ['chest'],
+    secondaryMuscles: ['arms', 'shoulders'],
+    description: 'Tác động trực tiếp khối cơ ngực lớn, cơ tay sau và vai trước hỗ trợ đẩy.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Barbell_Bench_Press_-_Medium_Grip/0.jpg',
+  },
+  {
+    id: 'incline_dumbbell_press',
+    name: 'Incline Dumbbell Press',
+    vietnameseName: 'Đẩy ngực trên tạ đơn',
+    category: 'gym',
+    equipment: 'Dumbbells / Incline Bench',
+    primaryMuscles: ['chest'],
+    secondaryMuscles: ['shoulders', 'arms'],
+    description: 'Phát triển viền ngực trên (Clavicular Pectoralis) tạo độ dày và thẩm mỹ.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Incline_Dumbbell_Press/0.jpg',
+  },
+  {
+    id: 'lat_pulldown',
+    name: 'Cable Lat Pulldown',
+    vietnameseName: 'Kéo xô máy cáp',
+    category: 'gym',
+    equipment: 'Cable Machine',
+    primaryMuscles: ['back'],
+    secondaryMuscles: ['arms', 'shoulders'],
+    description: 'Mở rộng bản lưng chữ V (Lats) và kích hoạt cơ tay trước (Biceps).',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/V-bar_Pulldown/0.jpg',
+  },
+  {
+    id: 'seated_cable_row',
+    name: 'Seated Cable Row',
+    vietnameseName: 'Kéo cáp ngồi dày lưng',
+    category: 'gym',
+    equipment: 'Cable Machine',
+    primaryMuscles: ['back'],
+    secondaryMuscles: ['arms'],
+    description: 'Tập trung xây dựng độ dày cơ lưng giữa (Rhomboids) và cầu vai.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Seated_Cable_Rows/0.jpg',
+  },
+  {
+    id: 'overhead_press',
+    name: 'Barbell Overhead Shoulder Press',
+    vietnameseName: 'Đẩy vai đòn tạ qua đầu',
+    category: 'gym',
+    equipment: 'Barbell',
+    primaryMuscles: ['shoulders'],
+    secondaryMuscles: ['arms', 'abs'],
+    description: 'Xây dựng cầu vai vuông vức và tăng sức mạnh bộc phát nhóm cơ thân trên.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Standing_Military_Press/0.jpg',
+  },
+  {
+    id: 'barbell_squat',
+    name: 'Barbell Back Squat',
+    vietnameseName: 'Gánh tạ đòn phát triển đùi',
+    category: 'gym',
+    equipment: 'Barbell / Squat Rack',
+    primaryMuscles: ['legs', 'glutes'],
+    secondaryMuscles: ['abs', 'back'],
+    description: 'Vua của các bài tập thân dưới: kích hoạt đùi trước, đùi sau và cơ mông.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Barbell_Full_Squat/0.jpg',
+  },
+  {
+    id: 'leg_press_machine',
+    name: '45° Leg Press Machine',
+    vietnameseName: 'Đạp đùi máy nghiêng',
+    category: 'gym',
+    equipment: 'Leg Press Machine',
+    primaryMuscles: ['legs'],
+    secondaryMuscles: ['glutes'],
+    description: 'Áp tải trọng lớn an toàn vào đùi trước mà không gây áp lực lên sống lưng.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Leg_Press/0.jpg',
+  },
+  {
+    id: 'cable_triceps_pushdown',
+    name: 'Cable Triceps Pushdown',
+    vietnameseName: 'Kéo cáp tay sau',
+    category: 'gym',
+    equipment: 'Cable Machine',
+    primaryMuscles: ['arms'],
+    secondaryMuscles: [],
+    description: 'Cô lập hoàn toàn 3 đầu cơ bắp tay sau (Triceps).',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Triceps_Pushdown/0.jpg',
+  },
+
+  // ================= 2. HOME WORKOUT & TẠ ĐƠN =================
+  {
+    id: 'dumbbell_goblet_squat',
+    name: 'Dumbbell Goblet Squat',
+    vietnameseName: 'Squat ôm tạ đơn trước ngực',
+    category: 'home',
+    equipment: 'Dumbbell / Kettlebell',
+    primaryMuscles: ['legs', 'glutes'],
+    secondaryMuscles: ['abs'],
+    description: 'Bài tập đùi mông tiêu chuẩn tại nhà với một quả tạ đơn.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Goblet_Squat/0.jpg',
+  },
+  {
+    id: 'dumbbell_floor_press',
+    name: 'Dumbbell Floor Press',
+    vietnameseName: 'Nằm sàn đẩy tạ đơn',
+    category: 'home',
+    equipment: 'Dumbbells / Mat',
+    primaryMuscles: ['chest'],
+    secondaryMuscles: ['arms', 'shoulders'],
+    description: 'Thay thế ghế bench tập ngực trên sàn nhà, khóa an toàn góc cùi chỏ.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Floor_Press/0.jpg',
+  },
+  {
+    id: 'dumbbell_lateral_raise',
+    name: 'Dumbbell Lateral Raise',
+    vietnameseName: 'Dang tạ đơn cơ vai giữa',
+    category: 'home',
+    equipment: 'Dumbbells',
+    primaryMuscles: ['shoulders'],
+    secondaryMuscles: ['arms'],
+    description: 'Tác động cô lập vào bó cơ vai giữa tạo hiệu ứng cầu vai rộng.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Side_Lateral_Raise/0.jpg',
+  },
+  {
+    id: 'single_arm_dumbbell_row',
+    name: 'Single-Arm Dumbbell Row',
+    vietnameseName: 'Kéo lưng tạ đơn 1 tay',
+    category: 'home',
+    equipment: 'Dumbbell / Chair',
+    primaryMuscles: ['back'],
+    secondaryMuscles: ['arms'],
+    description: 'Tận dụng mép ghế hoặc bàn làm điểm tựa kéo xô lưng tại gia.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/One-Arm_Dumbbell_Row/0.jpg',
+  },
+  {
+    id: 'bulgarian_split_squat',
+    name: 'Bulgarian Split Squat',
+    vietnameseName: 'Squat 1 chân gác ghế',
+    category: 'home',
+    equipment: 'Chair / Bodyweight',
+    primaryMuscles: ['legs', 'glutes'],
+    secondaryMuscles: ['abs'],
+    description: 'Kích hoạt tối đa vùng đùi trước và mông mà không cần tạ nặng.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Single_Leg_Squat/0.jpg',
+  },
+  {
+    id: 'plank_core_hold',
+    name: 'Plank Core Hold',
+    vietnameseName: 'Plank siết cơ lõi',
+    category: 'home',
+    equipment: 'Mat / Floor',
+    primaryMuscles: ['abs'],
+    secondaryMuscles: ['shoulders'],
+    description: 'Siết chặt cơ liên sườn và thành bụng 6 múi tĩnh.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Plank/0.jpg',
+  },
+
+  // ================= 3. CALISTHENICS & BODYWEIGHT =================
+  {
+    id: 'pushups_standard',
+    name: 'Standard Push-Up',
+    vietnameseName: 'Hít đất tiêu chuẩn',
+    category: 'calisthenics',
+    equipment: 'Bodyweight',
+    primaryMuscles: ['chest'],
+    secondaryMuscles: ['arms', 'shoulders', 'abs'],
+    description: 'Nền tảng Calisthenics xây dựng cơ ngực, tay sau và cơ bụng.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Pushups/0.jpg',
+  },
+  {
+    id: 'pullup_standard',
+    name: 'Pull-Up',
+    vietnameseName: 'Hít xà đơn sấp tay',
+    category: 'calisthenics',
+    equipment: 'Pull-up Bar',
+    primaryMuscles: ['back'],
+    secondaryMuscles: ['arms', 'shoulders', 'abs'],
+    description: 'Động tác kéo đỉnh cao kích thích cơ xô chữ V và bắp tay trước.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Pullups/0.jpg',
+  },
+  {
+    id: 'parallel_dips',
+    name: 'Parallel Bar Dips',
+    vietnameseName: 'Chống xà kép',
+    category: 'calisthenics',
+    equipment: 'Dip Bars',
+    primaryMuscles: ['chest', 'arms'],
+    secondaryMuscles: ['shoulders'],
+    description: 'Cắt nét cơ ngực dưới và bơm cơ bắp tay sau cực đại.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dips_-_Chest_Version/0.jpg',
+  },
+  {
+    id: 'pike_pushups',
+    name: 'Pike Push-Up',
+    vietnameseName: 'Hít đất dốc vai cao',
+    category: 'calisthenics',
+    equipment: 'Bodyweight / Floor',
+    primaryMuscles: ['shoulders'],
+    secondaryMuscles: ['arms', 'back'],
+    description: 'Tiền đề bắt buộc để luyện bài Handstand Push-up (Trồng chuối hít đất).',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Push-Up_-_Handstand/0.jpg',
+  },
+  {
+    id: 'hanging_leg_raise',
+    name: 'Hanging Leg Raise',
+    vietnameseName: 'Treo xà gập bụng nhấc chân',
+    category: 'calisthenics',
+    equipment: 'Pull-up Bar',
+    primaryMuscles: ['abs'],
+    secondaryMuscles: ['arms'],
+    description: 'Tác động sâu vào thành bụng dưới và cơ gấp hông.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Hanging_Leg_Raise/0.jpg',
+  },
+  {
+    id: 'muscle_up',
+    name: 'Bar Muscle-Up',
+    vietnameseName: 'Lên xà bốc nổ Calisthenics',
+    category: 'calisthenics',
+    equipment: 'Pull-up Bar',
+    primaryMuscles: ['back', 'chest', 'arms'],
+    secondaryMuscles: ['shoulders', 'abs'],
+    description: 'Tuyệt kỹ kết hợp bốc nổ giữa kéo xô và chống đẩy trên thanh xà.',
+    thumbnailUrl: 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Pullups/1.jpg',
+  },
+];

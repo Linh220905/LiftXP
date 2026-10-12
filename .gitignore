@@ -1,11 +1,18 @@
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
+# Environment variables & secrets
+.env
+.env.*
+*.env
+*.env.local
+
 # compiled output
 dist
 tmp
 out-tsc
 *.tsbuildinfo
 .expo
+.expo/
 .expo-shared
 
 # dependencies
@@ -47,3 +54,31 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# External embedded repositories
+opengym/
+
+# Heavy assets uploaded to Cloudflare R2 CDN (137MB)
+artifacts/train-xp/artifacts/
+artifacts/train-xp/dist/
+artifacts/Biểu tượng đĩa tạ neon xanh hiện đại.png
+
+# Local HTML preview & research files
+preview-*.html
+ui-ux-audit-showcase.html
+generate-preview.js
+
+# Temporary raw SVG/archive assets
+bodyrank_human_v6_svg/
+bodyrank_human_v6_svg.zip
+co_mat_sau_giong_100_phan_tram_anh_mau.svg
+*.zip
+*.tar.gz
+*.bak
+
+# Apple credentials & certs (DO NOT COMMIT)
+*.p8
+*.p12
+*.mobileprovision
+*.key
+*.pem
