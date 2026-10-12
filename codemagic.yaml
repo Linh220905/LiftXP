@@ -41,11 +41,15 @@ workflows:
           xcode-project build-ipa \
             --workspace *.xcworkspace \
             --scheme TrainXP
+          # Copy generated IPA to repo root for Codemagic artifacts collection
+          find . -name "*.ipa" -exec cp {} "$CM_BUILD_DIR/" \; || true
+          find /Users/builder/export -name "*.ipa" -exec cp {} "$CM_BUILD_DIR/" \; || true
+          ls -la "$CM_BUILD_DIR"/*.ipa || true
     artifacts:
-      - artifacts/train-xp/ios/build/remote/Build/Products/Release-iphoneos/*.ipa
-      - /Users/builder/export/*.ipa
-      - "build/ios/ipa/*.ipa"
-      - "*.ipa"
+      - "artifacts/train-xp/ios/build/ios/ipa/*.ipa"
+      - "artifacts/train-xp/ios/**/*.ipa"
+      - "**/*.ipa"
+      - "/Users/builder/export/*.ipa"
     publishing:
       app_store_connect:
         auth: integration
