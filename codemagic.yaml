@@ -15,7 +15,6 @@ workflows:
         EXPO_PUBLIC_REVENUECAT_APPLE_KEY: "appl_ewZBuGVynrAWHYczmwxNOfpXrhF"
         EXPO_PUBLIC_EXERCISE_CDN_URL: "https://pub-33f6c627cce748718337116d780396be.r2.dev"
       node: 20
-      pnpm: 9
       xcode: latest
       cocoapods: default
     scripts:
@@ -48,4 +47,3 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        expire_build_submitted_for_testing: false
