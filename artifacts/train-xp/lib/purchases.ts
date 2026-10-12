@@ -8,7 +8,7 @@ const API_KEY_GOOGLE = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY || '';
 export const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 export const PRIVACY_POLICY_URL = 'https://trainxp.vercel.app/privacy';
 
-export const PRO_ENTITLEMENT_ID = 'pro';
+export const PRO_ENTITLEMENT_ID = 'trainxp_pro';
 
 let isConfigured = false;
 
