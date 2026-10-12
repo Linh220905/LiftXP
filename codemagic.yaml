@@ -1,0 +1,51 @@
+workflows:
+  ios-release:
+    name: TrainXP iOS Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: TrainXP Apple Key
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.trainxp.workout
+      groups:
+        - app_store_credentials
+      vars:
+        EXPO_PUBLIC_REVENUECAT_APPLE_KEY: "appl_ewZBuGVynrAWHYczmwxNOfpXrhF"
+        EXPO_PUBLIC_EXERCISE_CDN_URL: "https://pub-33f6c627cce748718337116d780396be.r2.dev"
+      node: 20
+      pnpm: 9
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install pnpm & dependencies
+        script: |
+          npm install -g pnpm@9
+          pnpm install --frozen-lockfile=false
+      - name: Expo prebuild (Generate native iOS project)
+        script: |
+          cd artifacts/train-xp
+          npx expo prebuild --platform ios --clean
+      - name: Install Pods
+        script: |
+          cd artifacts/train-xp/ios
+          pod install
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          cd artifacts/train-xp/ios
+          xcode-project build-ipa \
+            --workspace *.xcworkspace \
+            --scheme TrainXP
+    artifacts:
+      - artifacts/train-xp/ios/build/remote/Build/Products/Release-iphoneos/*.ipa
+      - /Users/builder/export/*.ipa
+      - "*.ipa"
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        expire_build_submitted_for_testing: false
