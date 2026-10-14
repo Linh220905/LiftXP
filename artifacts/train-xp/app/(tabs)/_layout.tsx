@@ -1,12 +1,23 @@
 import React from 'react';
 import { useColors } from '@/hooks/useColors';
+import { ActivityIndicator, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { useI18n } from '@/lib/i18n';
+import { useAppState } from '@/context/AppState';
 
 export default function TabLayout() {
+  const { hydrated, hasOnboarded } = useAppState();
   const colors = useColors();
   const { t } = useI18n();
+
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: '#080C14', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#38BDF8" /></View>;
+  }
+
+  if (!hasOnboarded) {
+    return <Redirect href="/onboarding" />;
+  }
 
   return (
     <Tabs

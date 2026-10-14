@@ -20,18 +20,31 @@ const ALL_EXERCISES = EXERCISES_DATA as ExerciseDef[];
 // Map user equipment selection strings to exercise equipment tags
 function isEquipmentMatched(exerciseEquip: string, userEquip: string[]): boolean {
   if (!userEquip || userEquip.length === 0) return true; // default all
-  const normUser = userEquip.map((e) => e.toLowerCase());
-  const eq = exerciseEquip.toLowerCase();
+  const normUser = userEquip.map((e) => e.toLowerCase().replace(/[^a-z]/g, ''));
+  const eq = exerciseEquip.toLowerCase().replace(/[^a-z]/g, '');
 
-  if (eq === 'bodyweight' || eq === 'body only' || eq === 'none') return true;
-  if (eq === 'barbell' && (normUser.includes('barbell') || normUser.includes('bars & plates'))) return true;
-  if (eq === 'dumbbell' && (normUser.includes('dumbbell') || normUser.includes('small weights'))) return true;
+  if (eq === 'bodyweight' || eq === 'bodyonly' || eq === 'none') return true;
+  if (['barbell', 'olympicbarbell', 'ezbarbell'].includes(eq) && normUser.some((u) => ['barbell', 'barsplates', 'ezbar'].includes(u))) return true;
+  if (eq === 'dumbbell' && normUser.includes('dumbbell')) return true;
   if (eq === 'kettlebell' && normUser.includes('kettlebell')) return true;
-  if (eq === 'cable' && normUser.includes('cable machine')) return true;
-  if (eq === 'machine' && (normUser.includes('machines') || normUser.includes('equipment'))) return true;
+  if (eq === 'cable' && normUser.includes('cablemachine')) return true;
+  if (['machine', 'leveragemachine'].includes(eq) && normUser.includes('machines')) return true;
   if (eq === 'bench' && normUser.includes('bench')) return true;
 
   return normUser.some((u) => eq.includes(u) || u.includes(eq));
+}
+
+function matchesMuscle(exercise: ExerciseDef, group: 'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'abs'): boolean {
+  const primary = exercise.primary_muscles.map((muscle) => muscle.toLowerCase());
+  const aliases: Record<typeof group, string[]> = {
+    chest: ['chest'],
+    back: ['back'],
+    legs: ['legs', 'quads', 'calves', 'glutes'],
+    shoulders: ['shoulders'],
+    arms: ['arms', 'biceps', 'triceps', 'forearms'],
+    abs: ['abs'],
+  };
+  return primary.some((muscle) => aliases[group].includes(muscle));
 }
 
 // Check if exercise avoids sensitive joint areas
@@ -61,14 +74,7 @@ function findCandidates(
   mechanicFilter?: 'compound' | 'isolation',
 ): ExerciseDef[] {
   return ALL_EXERCISES.filter((e) => {
-    const hitsMuscle =
-      e.primary_muscles.includes(muscleGroup) ||
-      (muscleGroup === 'legs' && (e.primary_muscles.includes('quadriceps') || e.primary_muscles.includes('gluteal') || e.primary_muscles.includes('hamstring'))) ||
-      (muscleGroup === 'back' && (e.primary_muscles.includes('upper-back') || e.primary_muscles.includes('trapezius') || e.primary_muscles.includes('lower-back'))) ||
-      (muscleGroup === 'arms' && (e.primary_muscles.includes('biceps') || e.primary_muscles.includes('triceps') || e.primary_muscles.includes('forearm'))) ||
-      (muscleGroup === 'shoulders' && e.primary_muscles.includes('deltoids'));
-
-    if (!hitsMuscle) return false;
+    if (!matchesMuscle(e, muscleGroup)) return false;
     if (mechanicFilter && e.mechanic !== mechanicFilter) return false;
     if (!isEquipmentMatched(e.equipment, userEquip)) return false;
     if (!avoidsSensitiveJoints(e, sensitiveJoints)) return false;
@@ -94,8 +100,13 @@ function pickExercise(
     usedIds.add(anyCand[0].id);
     return anyCand[0].id;
   }
-  usedIds.add(fallbackId);
-  return fallbackId;
+  const fallback = ALL_EXERCISES.find((exercise) =>
+    exercise.id === fallbackId && matchesMuscle(exercise, muscle) &&
+    isEquipmentMatched(exercise.equipment, userEquip) && avoidsSensitiveJoints(exercise, sensitiveJoints) &&
+    !usedIds.has(exercise.id));
+  if (!fallback) return '';
+  usedIds.add(fallback.id);
+  return fallback.id;
 }
 
 export interface GeneratedPlan {
@@ -132,6 +143,16 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
 
   const used = new Set<string>();
 
+  // Calibrate squat working weight based on user's entered PR
+  const squatWorkingWeight = profile.prSquat && profile.prSquat > 20
+    ? Math.round((profile.prSquat * 0.75) / 2.5) * 2.5
+    : 70;
+
+  // Smart recovery scheduling: if chest or arms were trained recently, give them rest before Push day
+  const recentlyWorkedChestOrArms = (profile.lastMusclesWorked || []).some((m) =>
+    ['Chest', 'Arms'].includes(m)
+  );
+
   // 1. GENERATE ROUTINES BY SPLIT
   let routines: Routine[] = [];
   let weekSchedule: Record<number, string | null> = { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null, 0: null };
@@ -143,7 +164,7 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
     const fbA: RoutineExercise[] = [
       { id: pickExercise('chest', equip, sensitive, 'compound', used, 'barbell_bench_press'), sets: baseSets, reps: baseReps, targetWeight: 50, rir: 2 },
       { id: pickExercise('back', equip, sensitive, 'compound', used, 'lat_pulldown'), sets: baseSets, reps: baseReps, targetWeight: 45, rir: 2 },
-      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: 60, rir: 2 },
+      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: squatWorkingWeight, rir: 2 },
       { id: pickExercise('shoulders', equip, sensitive, 'compound', used, 'overhead_shoulder_press'), sets: baseSets, reps: 10, targetWeight: 30, rir: 2 },
       { id: pickExercise('arms', equip, sensitive, 'isolation', used, 'standing_bicep_cable_curl'), sets: 3, reps: 12, targetWeight: 20, rir: 1, supersetId: 'ss_fba_1' },
       { id: pickExercise('arms', equip, sensitive, 'isolation', used, 'tricep_rope_pushdown'), sets: 3, reps: 12, targetWeight: 20, rir: 1, supersetId: 'ss_fba_1' },
@@ -163,7 +184,9 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
       { id: 'routine_fb_b', name: 'Full Body B (Hypertrophy)', emoji: 'shield', progression, exercises: fbB },
     ];
 
-    weekSchedule = { 1: 'routine_fb_a', 2: null, 3: null, 4: 'routine_fb_b', 5: null, 6: null, 0: null };
+    weekSchedule = recentlyWorkedChestOrArms
+      ? { 1: 'routine_fb_b', 2: null, 3: null, 4: 'routine_fb_a', 5: null, 6: null, 0: null }
+      : { 1: 'routine_fb_a', 2: null, 3: null, 4: 'routine_fb_b', 5: null, 6: null, 0: null };
   } else if (days === 3) {
     // 3-DAY PUSH / PULL / LEGS
     splitName = '3-Day Push / Pull / Legs (PPL)';
@@ -184,7 +207,7 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
     ];
 
     const legEx: RoutineExercise[] = [
-      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: 80, rir: 2 },
+      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: squatWorkingWeight, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'compound', used, 'leg_press_machine'), sets: 3, reps: 10, targetWeight: 140, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'lying_leg_curl'), sets: 3, reps: 12, targetWeight: 40, rir: 1, supersetId: 'ss_leg_1' },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'leg_extension_machine'), sets: 3, reps: 12, targetWeight: 45, rir: 1, supersetId: 'ss_leg_1' },
@@ -197,7 +220,9 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
       { id: 'routine_legs', name: 'Leg Day (Quads, Hamstrings & Calves)', emoji: 'shield', progression, exercises: legEx },
     ];
 
-    weekSchedule = { 1: 'routine_push', 2: null, 3: 'routine_pull', 4: null, 5: 'routine_legs', 6: null, 0: null };
+    weekSchedule = recentlyWorkedChestOrArms
+      ? { 1: 'routine_pull', 2: null, 3: 'routine_legs', 4: null, 5: 'routine_push', 6: null, 0: null }
+      : { 1: 'routine_push', 2: null, 3: 'routine_pull', 4: null, 5: 'routine_legs', 6: null, 0: null };
   } else if (days === 4) {
     // 4-DAY UPPER / LOWER SPLIT
     splitName = '4-Day Upper / Lower Split';
@@ -210,7 +235,7 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
     ];
 
     const lowerA: RoutineExercise[] = [
-      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: 80, rir: 2 },
+      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: squatWorkingWeight, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'compound', used, 'leg_press_machine'), sets: 3, reps: 10, targetWeight: 140, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'lying_leg_curl'), sets: 3, reps: 12, targetWeight: 40, rir: 1 },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'standing_calf_raise'), sets: 4, reps: 15, targetWeight: 50, rir: 1 },
@@ -240,7 +265,9 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
       { id: 'routine_lower_b', name: 'Lower Hypertrophy (Hamstrings & Calves)', emoji: 'target', progression, exercises: lowerB },
     ];
 
-    weekSchedule = { 1: 'routine_upper_a', 2: 'routine_lower_a', 3: null, 4: 'routine_upper_b', 5: 'routine_lower_b', 6: null, 0: null };
+    weekSchedule = recentlyWorkedChestOrArms
+      ? { 1: 'routine_lower_a', 2: 'routine_upper_a', 3: null, 4: 'routine_lower_b', 5: 'routine_upper_b', 6: null, 0: null }
+      : { 1: 'routine_upper_a', 2: 'routine_lower_a', 3: null, 4: 'routine_upper_b', 5: 'routine_lower_b', 6: null, 0: null };
   } else {
     // 5 OR 6-DAY HYBRID PPL SPLIT
     splitName = `${days}-Day High Volume Split (PPL + Upper/Lower)`;
@@ -261,7 +288,7 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
     ];
 
     const legA: RoutineExercise[] = [
-      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: 85, rir: 2 },
+      { id: pickExercise('legs', equip, sensitive, 'compound', used, 'barbell_squat'), sets: baseSets, reps: baseReps, targetWeight: squatWorkingWeight, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'compound', used, 'leg_press_machine'), sets: 3, reps: 10, targetWeight: 150, rir: 2 },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'lying_leg_curl'), sets: 3, reps: 12, targetWeight: 40, rir: 1, supersetId: 'ss_l1' },
       { id: pickExercise('legs', equip, sensitive, 'isolation', used, 'leg_extension_machine'), sets: 3, reps: 12, targetWeight: 45, rir: 1, supersetId: 'ss_l1' },
@@ -291,11 +318,58 @@ export function generatePersonalizedPlan(profile: Profile): GeneratedPlan {
     ];
 
     if (days === 5) {
-      weekSchedule = { 1: 'routine_p1', 2: 'routine_pu1', 3: 'routine_l1', 4: null, 5: 'routine_up_x', 6: 'routine_low_x', 0: null };
+      weekSchedule = recentlyWorkedChestOrArms
+        ? { 1: 'routine_pu1', 2: 'routine_l1', 3: 'routine_p1', 4: null, 5: 'routine_up_x', 6: 'routine_low_x', 0: null }
+        : { 1: 'routine_p1', 2: 'routine_pu1', 3: 'routine_l1', 4: null, 5: 'routine_up_x', 6: 'routine_low_x', 0: null };
     } else {
-      weekSchedule = { 1: 'routine_p1', 2: 'routine_pu1', 3: 'routine_l1', 4: 'routine_up_x', 5: 'routine_p1', 6: 'routine_low_x', 0: null };
+      weekSchedule = recentlyWorkedChestOrArms
+        ? { 1: 'routine_pu1', 2: 'routine_l1', 3: 'routine_p1', 4: 'routine_up_x', 5: 'routine_pu1', 6: 'routine_low_x', 0: null }
+        : { 1: 'routine_p1', 2: 'routine_pu1', 3: 'routine_l1', 4: 'routine_up_x', 5: 'routine_p1', 6: 'routine_low_x', 0: null };
     }
   }
 
+  const validIds = new Set(ALL_EXERCISES.map((exercise) => exercise.id));
+  const focusText = (profile.targetMuscles || []).join(' ').toLowerCase();
+  const focusedGroups = new Set<'chest' | 'back' | 'legs' | 'shoulders' | 'arms' | 'abs'>();
+  if (focusText.includes('full body')) {
+    (['chest', 'back', 'legs', 'shoulders', 'arms', 'abs'] as const).forEach((group) => focusedGroups.add(group));
+  }
+  if (/chest|pec/.test(focusText)) focusedGroups.add('chest');
+  if (/back|lat/.test(focusText)) focusedGroups.add('back');
+  if (/leg|quad|glute|calf/.test(focusText)) focusedGroups.add('legs');
+  if (/shoulder|delt/.test(focusText)) focusedGroups.add('shoulders');
+  if (/arm|bicep|tricep/.test(focusText)) focusedGroups.add('arms');
+  if (/core|ab/.test(focusText)) focusedGroups.add('abs');
+  const durationMinutes = Number(profile.workoutDuration.match(/\d+/)?.[0]) || 60;
+  const maxSetsPerWorkout = Math.max(8, Math.floor(durationMinutes / 2.5));
+
+  routines = routines.map((routine) => {
+    let exercises = routine.exercises.filter((exercise) => validIds.has(exercise.id)).map((exercise) => {
+      const definition = ALL_EXERCISES.find((item) => item.id === exercise.id);
+      const focused = definition && Array.from(focusedGroups).some((group) => matchesMuscle(definition, group));
+      return focused ? { ...exercise, sets: exercise.sets + 1 } : exercise;
+    });
+
+    // Scale number of exercises according to user's selected duration
+    const maxExercises = durationMinutes <= 45 ? 4 : durationMinutes >= 90 ? 7 : 5;
+    if (exercises.length > maxExercises) {
+      exercises = exercises.slice(0, maxExercises);
+    }
+
+    let remainingSets = exercises.reduce((total, exercise) => total + exercise.sets, 0);
+    const focusedExercise = (exercise: RoutineExercise) => {
+      const definition = ALL_EXERCISES.find((item) => item.id === exercise.id);
+      return Boolean(definition && Array.from(focusedGroups).some((group) => matchesMuscle(definition, group)));
+    };
+    for (const shouldFocus of [false, true]) {
+      for (let index = exercises.length - 1; index >= 0 && remainingSets > maxSetsPerWorkout; index -= 1) {
+        const exercise = exercises[index];
+        if (focusedExercise(exercise) !== shouldFocus || exercise.sets <= 2) continue;
+        exercises[index] = { ...exercise, sets: exercise.sets - 1 };
+        remainingSets -= 1;
+      }
+    }
+    return { ...routine, exercises };
+  });
   return { routines, weekSchedule, splitName };
 }

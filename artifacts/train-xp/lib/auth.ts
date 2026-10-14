@@ -39,26 +39,22 @@ export async function signInWithApple(): Promise<AuthUser | null> {
       ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ')
       : undefined;
 
-    const user: AuthUser = {
-      id: credential.user,
-      email: credential.email ?? undefined,
+    if (!credential.identityToken) {
+      throw new Error('Apple did not return an identity token. Please try again.');
+    }
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: credential.identityToken,
+    });
+    if (error) throw error;
+    if (!data.user?.id) throw new Error('Supabase did not return an authenticated user.');
+
+    return {
+      id: data.user.id,
+      email: data.user.email ?? credential.email ?? undefined,
       fullName: fullName || undefined,
       provider: 'apple',
     };
-
-    // If Apple identityToken is available, authenticate with Supabase Auth
-    if (credential.identityToken) {
-      try {
-        await supabase.auth.signInWithIdToken({
-          provider: 'apple',
-          token: credential.identityToken,
-        });
-      } catch (err) {
-        console.warn('[Auth] Supabase Auth exchange notice:', err);
-      }
-    }
-
-    return user;
   } catch (error: any) {
     if (error.code === 'ERR_REQUEST_CANCELED') {
       return null; // User cancelled Apple Sign In dialog
@@ -143,20 +139,13 @@ export async function signInWithGoogle(): Promise<AuthUser | null> {
 
 export const signInWithGoogleMock = signInWithGoogle;
 
-export async function deleteUserAccount(userId?: string): Promise<boolean> {
-  // Apple Guideline 5.1.1(v): Permanent deletion of all user data
-  try {
-    if (userId) {
-      await Promise.allSettled([
-        supabase.from('profiles').delete().eq('id', userId),
-        supabase.from('workouts').delete().eq('user_id', userId),
-        supabase.from('routines').delete().eq('user_id', userId),
-        supabase.from('bodyweight_logs').delete().eq('user_id', userId),
-      ]);
-    }
-    await supabase.auth.signOut();
-  } catch (err) {
-    console.warn('[Auth] Account deletion notice:', err);
-  }
-  return true;
+export async function deleteUserAccount(): Promise<void> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData.session) throw new Error('No signed-in account is available to delete.');
+
+  const { error } = await supabase.functions.invoke('delete-account');
+  if (error) throw new Error(`Account deletion failed: ${error.message}`);
+
+  await supabase.auth.signOut();
 }

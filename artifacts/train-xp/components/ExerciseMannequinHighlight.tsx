@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Path, G, Circle, Defs, ClipPath } from 'react-native-svg';
+import { resolveMuscleSlug, type MuscleSlug } from '@/lib/muscles';
 
 interface ExerciseMannequinHighlightProps {
   primaryMuscles: string[];
@@ -10,6 +11,51 @@ interface ExerciseMannequinHighlightProps {
   baseColor?: string;
   strokeColor?: string;
   height?: number;
+}
+
+const SLUG_TO_MANNEQUIN_GROUP: Record<MuscleSlug, string> = {
+  trapezius: 'back',
+  deltoids: 'shoulders',
+  chest: 'chest',
+  'upper-back': 'back',
+  serratus: 'back',
+  biceps: 'arms',
+  triceps: 'arms',
+  forearm: 'arms',
+  abs: 'abs',
+  obliques: 'abs',
+  'lower-back': 'back',
+  gluteal: 'glutes',
+  quadriceps: 'legs',
+  hamstring: 'legs',
+  adductors: 'legs',
+  'hip-flexors': 'legs',
+  calves: 'legs',
+  tibialis: 'legs',
+};
+
+function matchesGroup(raw: string, targetGroup: string): boolean {
+  if (!raw) return false;
+  const lower = raw.toLowerCase().trim();
+  const g = targetGroup.toLowerCase().trim();
+
+  // Direct substring or equality match
+  if (lower === g || lower.includes(g)) return true;
+
+  // Resolve via alias engine
+  const slug = resolveMuscleSlug(lower);
+  if (slug && SLUG_TO_MANNEQUIN_GROUP[slug] === g) return true;
+
+  // Fallback heuristic if not in dictionary
+  if (g === 'shoulders' && lower.includes('delt')) return true;
+  if (g === 'arms' && (lower.includes('bicep') || lower.includes('tricep') || lower.includes('arm'))) return true;
+  if (g === 'legs' && (lower.includes('quad') || lower.includes('calf') || lower.includes('hamstring') || lower.includes('thigh'))) return true;
+  if (g === 'back' && (lower.includes('back') || lower.includes('lat') || lower.includes('trap'))) return true;
+  if (g === 'abs' && (lower.includes('ab') || lower.includes('core'))) return true;
+  if (g === 'chest' && (lower.includes('chest') || lower.includes('pec'))) return true;
+  if (g === 'glutes' && (lower.includes('glute') || lower.includes('butt'))) return true;
+
+  return false;
 }
 
 export function ExerciseMannequinHighlight({
@@ -23,11 +69,11 @@ export function ExerciseMannequinHighlight({
 }: ExerciseMannequinHighlightProps) {
   // Normalize muscle strings to canonical keys
   const isPrimary = (group: string) => {
-    return (primaryMuscles || []).some((m) => (m || '').toLowerCase().includes(group.toLowerCase()));
+    return (primaryMuscles || []).some((m) => matchesGroup(m, group));
   };
 
   const isSecondary = (group: string) => {
-    return (secondaryMuscles || []).some((m) => (m || '').toLowerCase().includes(group.toLowerCase()));
+    return (secondaryMuscles || []).some((m) => matchesGroup(m, group));
   };
 
   const getColor = (group: string) => {

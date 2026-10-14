@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   StyleSheet,
   View,
@@ -20,10 +21,11 @@ import { router } from 'expo-router';
 import { useAppState, type WorkoutResult, type Routine } from '@/context/AppState';
 import { ExerciseMannequinHighlight } from '@/components/ExerciseMannequinHighlight';
 import { musclesOf, MUSCLE_NAMES, type MuscleSlug } from '@/lib/muscles';
-import { type ProgressionPolicy, calculate1RM } from '@/lib/progression';
+import { type ProgressionPolicy, calculate1RM, calculateNextPrescription } from '@/lib/progression';
 import { getExerciseImageSource, getExerciseGifSource } from '@/lib/exerciseAssets';
 import { useI18n } from '@/lib/i18n';
 import { liveActivity } from '@/lib/liveActivity';
+import { displayWeightToKg, formatWeight, kgToDisplayWeight, weightUnitLabel } from '@/lib/units';
 
 // Import seed dataset
 import EXERCISES_DATA from '../../../../data/exercises_supabase_seed.json';
@@ -76,6 +78,13 @@ interface DetailedFinishReport extends WorkoutResult {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+function parseWorkoutNumber(value: string): number | null {
+  const normalized = value.trim().replace(',', '.');
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : null;
+}
+
 export default function WorkoutScreen() {
   const insets = useSafeAreaInsets();
   const { finishWorkout, profile, routines, weekSchedule, workoutsHistory } = useAppState();
@@ -95,6 +104,7 @@ export default function WorkoutScreen() {
 
   // Workout Session State
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
   const [activeRoutineName, setActiveRoutineName] = useState<string>('Freestyle Workout');
   const [activeExercises, setActiveExercises] = useState<ActiveExercise[]>([]);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -109,12 +119,65 @@ export default function WorkoutScreen() {
 
   // Barbell Plate Calculator Modal
   const [plateModalOpen, setPlateModalOpen] = useState(false);
-  const [plateTargetWeight, setPlateTargetWeight] = useState('60');
-  const [barWeight, setBarWeight] = useState(20);
+  const [plateTargetWeight, setPlateTargetWeight] = useState(profile.unit === 'Imperial' ? '135' : '60');
+  const [barWeight, setBarWeight] = useState(profile.unit === 'Imperial' ? 45 : 20);
+
+  useEffect(() => {
+    setPlateTargetWeight(profile.unit === 'Imperial' ? '135' : '60');
+    setBarWeight(profile.unit === 'Imperial' ? 45 : 20);
+  }, [profile.unit]);
 
   // Floating Rest Timer
   const [restSeconds, setRestSeconds] = useState(120);
   const [isRestTimerRunning, setIsRestTimerRunning] = useState(false);
+
+  const draftStorageKey = `@train-xp/workout-draft:${profile.authUserId || 'guest'}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    setDraftReady(false);
+    void AsyncStorage.getItem(draftStorageKey).then((raw) => {
+      if (cancelled) return;
+      if (raw) {
+        try {
+          const draft = JSON.parse(raw) as {
+            routineName: string;
+            exercises: ActiveExercise[];
+            currentExerciseIndex: number;
+            duration: number;
+            savedAt: number;
+          };
+          if (draft.exercises.length) {
+            setActiveRoutineName(draft.routineName);
+            setActiveExercises(draft.exercises);
+            setCurrentExerciseIndex(Math.min(draft.currentExerciseIndex, draft.exercises.length - 1));
+            setWorkoutDuration(draft.duration + Math.max(0, Math.floor((Date.now() - draft.savedAt) / 1000)));
+            setDetailedSummary(null);
+            setIsWorkoutActive(true);
+          }
+        } catch {
+          void AsyncStorage.removeItem(draftStorageKey);
+        }
+      }
+      setDraftReady(true);
+    }).catch(() => setDraftReady(true));
+    return () => { cancelled = true; };
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (!isWorkoutActive || activeExercises.length === 0) {
+      void AsyncStorage.removeItem(draftStorageKey);
+      return;
+    }
+    void AsyncStorage.setItem(draftStorageKey, JSON.stringify({
+      routineName: activeRoutineName,
+      exercises: activeExercises,
+      currentExerciseIndex,
+      duration: workoutDuration,
+      savedAt: Date.now(),
+    }));
+  }, [draftReady, draftStorageKey, isWorkoutActive, activeRoutineName, activeExercises, currentExerciseIndex, workoutDuration]);
 
   // Search Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,14 +213,14 @@ export default function WorkoutScreen() {
     activeExercises.forEach((act) => {
       act.sets.forEach((s) => {
         if (s.done) {
-          const w = parseFloat(s.weight) || 0;
-          const r = parseFloat(s.reps) || 0;
+          const w = displayWeightToKg(parseWorkoutNumber(s.weight) ?? 0, profile.unit);
+          const r = parseWorkoutNumber(s.reps) ?? 0;
           vol += w * r;
         }
       });
     });
     return Math.round(vol);
-  }, [activeExercises]);
+  }, [activeExercises, profile.unit]);
 
   const syncLiveActivitySet = useCallback(
     (actEx: ActiveExercise, setIdx: number, isRest = false, restSec = 0) => {
@@ -168,7 +231,7 @@ export default function WorkoutScreen() {
         exerciseName: exName,
         currentSet: setIdx + 1,
         totalSets: actEx.sets.length,
-        weightKg: parseFloat(targetSet?.weight || '0') || 0,
+        weightKg: displayWeightToKg(parseWorkoutNumber(targetSet?.weight || '0') ?? 0, profile.unit),
         reps: parseInt(targetSet?.reps || '0', 10) || 0,
         isResting: isRest,
         restSeconds: restSec > 0 ? restSec : undefined,
@@ -185,7 +248,7 @@ export default function WorkoutScreen() {
         void liveActivity.updateActivity(payload);
       }
     },
-    [activeRoutineName, currentTotalVolume, locale, workoutDuration]
+    [activeRoutineName, currentTotalVolume, locale, workoutDuration, profile.unit]
   );
 
   // Periodic sync Live Activity duration every 10s
@@ -242,16 +305,35 @@ export default function WorkoutScreen() {
         .map((re) => {
           const ex = exMap.get(re.id);
           if (!ex) return null;
+          const previousEntry = workoutsHistory
+            .find((workout) => workout.entries?.some((entry) => entry.id === re.id))
+            ?.entries?.find((entry) => entry.id === re.id);
+          const previousSets = previousEntry?.sets
+            .map((set) => ({
+              weightKg: Number(set.weight) || 0,
+              reps: Number(set.reps) || 0,
+              targetReps: re.reps ?? 10,
+              done: set.done,
+              rir: set.rir,
+            })) ?? [];
+          const lastWeight = previousSets[previousSets.length - 1]?.weightKg ?? (re.targetWeight ?? 50);
+          const prescription = previousSets.length
+            ? calculateNextPrescription(lastWeight, previousSets, {
+                policy: routine.progression || 'linear',
+                minReps: 8,
+                maxReps: 12,
+              }, ex.category)
+            : { weightKg: re.targetWeight ?? 50, targetReps: re.reps ?? 10, reason: 'Starting prescription.' };
           return {
             exercise: ex,
             progression: routine.progression || 'linear',
             unilateral: false,
             sets: Array.from({ length: re.sets || 3 }).map((_, i) => ({
               setNumber: i + 1,
-              weight: String(re.targetWeight || 50),
-              reps: String(re.reps || 10),
-              targetReps: re.reps || 10,
-              rir: re.rir || 2,
+              weight: String(kgToDisplayWeight(prescription.weightKg, profile.unit)),
+              reps: String(prescription.targetReps),
+              targetReps: prescription.targetReps,
+              rir: re.rir ?? 2,
               done: false,
             })),
           };
@@ -272,7 +354,7 @@ export default function WorkoutScreen() {
           exerciseName: exName,
           currentSet: 1,
           totalSets: firstEx.sets.length,
-          weightKg: parseFloat(firstSet?.weight || '0') || 0,
+          weightKg: displayWeightToKg(parseWorkoutNumber(firstSet?.weight || '0') ?? 0, profile.unit),
           reps: parseInt(firstSet?.reps || '0', 10) || 0,
           isResting: false,
           totalDurationSeconds: 0,
@@ -295,9 +377,9 @@ export default function WorkoutScreen() {
       progression: 'linear',
       unilateral: false,
       sets: [
-        { setNumber: 1, weight: '40', reps: '10', targetReps: 10, rir: 2, done: false },
-        { setNumber: 2, weight: '40', reps: '10', targetReps: 10, rir: 2, done: false },
-        { setNumber: 3, weight: '40', reps: '10', targetReps: 10, rir: 2, done: false },
+        { setNumber: 1, weight: String(kgToDisplayWeight(40, profile.unit)), reps: '10', targetReps: 10, rir: 2, done: false },
+        { setNumber: 2, weight: String(kgToDisplayWeight(40, profile.unit)), reps: '10', targetReps: 10, rir: 2, done: false },
+        { setNumber: 3, weight: String(kgToDisplayWeight(40, profile.unit)), reps: '10', targetReps: 10, rir: 2, done: false },
       ],
     };
 
@@ -335,7 +417,7 @@ export default function WorkoutScreen() {
           });
           return {
             dateStr,
-            summary: doneSets.map((s) => `${s.weight}kg × ${s.reps}`).join(', '),
+            summary: doneSets.map((s) => `${formatWeight(Number(s.weight) || 0, profile.unit, 1)}${weightUnitLabel(profile.unit)} × ${s.reps}`).join(', '),
           };
         }
       }
@@ -367,9 +449,10 @@ export default function WorkoutScreen() {
   };
 
   const plateBreakdown = useMemo(() => {
-    const total = parseFloat(plateTargetWeight) || 0;
-    const perSide = Math.max(0, (total - barWeight) / 2);
-    const available = [25, 20, 15, 10, 5, 2.5, 1.25];
+    const total = parseWorkoutNumber(plateTargetWeight) ?? 0;
+    const canLoadBar = total >= barWeight;
+    const perSide = canLoadBar ? (total - barWeight) / 2 : 0;
+    const available = profile.unit === 'Imperial' ? [45, 35, 25, 10, 5, 2.5] : [25, 20, 15, 10, 5, 2.5, 1.25];
     const plates: { plate: number; count: number }[] = [];
     let rem = perSide;
     for (const p of available) {
@@ -379,8 +462,8 @@ export default function WorkoutScreen() {
         rem = Math.round((rem - c * p) * 100) / 100;
       }
     }
-    return { perSide, plates, rem };
-  }, [plateTargetWeight, barWeight]);
+    return { perSide, plates, rem, canLoadBar };
+  }, [plateTargetWeight, barWeight, profile.unit]);
 
   const handleAddSet = (isDrop = false) => {
     if (!currentActive) return;
@@ -418,6 +501,22 @@ export default function WorkoutScreen() {
   };
 
   const toggleSetDone = (setIdx: number) => {
+    const currentSet = currentActive?.sets[setIdx];
+    if (!currentSet) return;
+    if (!currentSet.done) {
+      const weight = parseWorkoutNumber(currentSet.weight);
+      const reps = parseWorkoutNumber(currentSet.reps);
+      if (weight === null || weight < 0 || reps === null || !Number.isInteger(reps) || reps < 1 || reps > 36 ||
+          (currentSet.rir !== undefined && (!Number.isInteger(currentSet.rir) || currentSet.rir < 0 || currentSet.rir > 10))) {
+        Alert.alert(
+          locale === 'vi' ? 'Giá trị hiệp chưa hợp lệ' : 'Invalid set values',
+          locale === 'vi'
+            ? 'Tạ phải từ 0 trở lên, reps là số nguyên từ 1 đến 36 và RIR từ 0 đến 10.'
+            : 'Weight must be 0 or higher, reps must be a whole number from 1 to 36, and RIR must be 0 to 10.',
+        );
+        return;
+      }
+    }
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = [...activeExercises];
     const target = updated[currentExerciseIndex].sets[setIdx];
@@ -432,12 +531,12 @@ export default function WorkoutScreen() {
           locale === 'vi'
             ? currentActive.exercise.name_vi || currentActive.exercise.name
             : currentActive.exercise.name;
-        const addedVol = (parseFloat(target.weight) || 0) * (parseFloat(target.reps) || 0);
+        const addedVol = displayWeightToKg(parseWorkoutNumber(target.weight) ?? 0, profile.unit) * (parseWorkoutNumber(target.reps) ?? 0);
         void liveActivity.startRestTimer(120, {
           exerciseName: exName,
           currentSet: setIdx + 1,
           totalSets: currentActive.sets.length,
-          weightKg: parseFloat(target.weight) || 0,
+          weightKg: displayWeightToKg(parseWorkoutNumber(target.weight) ?? 0, profile.unit),
           reps: parseInt(target.reps, 10) || 0,
           totalDurationSeconds: workoutDuration,
           totalVolumeKg: currentTotalVolume + addedVol,
@@ -452,7 +551,21 @@ export default function WorkoutScreen() {
   };
 
   const handleFinishWorkout = () => {
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const hasInvalidCompletedSet = activeExercises.some((act) => act.sets.some((set) => {
+      if (!set.done) return false;
+      const weight = parseWorkoutNumber(set.weight);
+      const reps = parseWorkoutNumber(set.reps);
+      return weight === null || displayWeightToKg(weight, profile.unit) < 0 || reps === null ||
+        !Number.isInteger(reps) || reps < 1 || reps > 36 ||
+        (set.rir !== undefined && (!Number.isInteger(set.rir) || set.rir < 0 || set.rir > 10));
+    }));
+    if (hasInvalidCompletedSet) {
+      Alert.alert(
+        locale === 'vi' ? 'Giá trị hiệp chưa hợp lệ' : 'Invalid set values',
+        locale === 'vi' ? 'Kiểm tra lại tạ, reps và RIR của các hiệp đã đánh dấu.' : 'Check the weight, reps, and RIR on completed sets.',
+      );
+      return;
+    }
 
     let totalVol = 0;
     let completedSets = 0;
@@ -470,12 +583,15 @@ export default function WorkoutScreen() {
       let bestWeight = 0;
       let bestReps = 0;
 
-      (act.exercise.primary_muscles || []).forEach((m) => primSet.add(m));
-      (act.exercise.secondary_muscles || []).forEach((m) => secSet.add(m));
+      if (setsDone.length > 0) {
+        (act.exercise.primary_muscles || []).forEach((m) => primSet.add(m));
+        (act.exercise.secondary_muscles || []).forEach((m) => secSet.add(m));
+      }
 
       setsDone.forEach((s) => {
-        const w = parseFloat(s.weight) || 0;
-        const r = parseFloat(s.reps) || 0;
+        const inputWeight = parseWorkoutNumber(s.weight);
+        const w = displayWeightToKg(inputWeight ?? 0, profile.unit);
+        const r = parseWorkoutNumber(s.reps) ?? 0;
         totalVol += w * r;
         completedSets += 1;
 
@@ -499,16 +615,28 @@ export default function WorkoutScreen() {
       entriesData.push({
         id: act.exercise.id,
         sets: act.sets.map((s) => ({
-          weight: s.weight,
+          weight: displayWeightToKg(parseWorkoutNumber(s.weight) ?? 0, profile.unit),
           reps: s.reps,
           rir: s.rir,
           done: s.done,
         })),
       });
 
-      const m = musclesOf({ primary: act.exercise.primary_muscles, secondary: act.exercise.secondary_muscles });
-      Object.keys(m).forEach((slug) => trainedMusclesSet.add(slug as MuscleSlug));
+      if (setsDone.length > 0) {
+        const m = musclesOf({ primary: act.exercise.primary_muscles, secondary: act.exercise.secondary_muscles });
+        Object.keys(m).forEach((slug) => trainedMusclesSet.add(slug as MuscleSlug));
+      }
     });
+
+    if (completedSets === 0) {
+      Alert.alert(
+        locale === 'vi' ? 'Chưa có hiệp hoàn thành' : 'No completed sets',
+        locale === 'vi' ? 'Hãy đánh dấu ít nhất một hiệp trước khi kết thúc buổi tập.' : 'Complete at least one set before finishing this workout.',
+      );
+      return;
+    }
+
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const musclesListTrained = Array.from(trainedMusclesSet);
     musclesListTrained.forEach((slug) => {
@@ -540,6 +668,8 @@ export default function WorkoutScreen() {
 
     void liveActivity.endActivity();
     setIsWorkoutActive(false);
+    setIsRestTimerRunning(false);
+    void AsyncStorage.removeItem(draftStorageKey);
   };
 
   const categories = useMemo(() => {
@@ -714,9 +844,9 @@ export default function WorkoutScreen() {
                         <View key={i} style={styles.prRow}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.prName} numberOfLines={1}>{pr.name}</Text>
-                            <Text style={styles.prSub}>{pr.weight}kg × {pr.reps} {t.common.reps}</Text>
+                            <Text style={styles.prSub}>{formatWeight(pr.weight, profile.unit, 1)}{weightUnitLabel(profile.unit)} × {pr.reps} {t.common.reps}</Text>
                           </View>
-                          <Text style={styles.prVal}>{pr.est1RM} kg 1RM</Text>
+                          <Text style={styles.prVal}>{formatWeight(pr.est1RM, profile.unit, 1)} {weightUnitLabel(profile.unit)} 1RM</Text>
                         </View>
                       ))}
                     </View>
@@ -930,7 +1060,7 @@ export default function WorkoutScreen() {
                 {/* Sets Logging Table */}
                 <View style={styles.tableHead}>
                   <Text style={[styles.th, { width: 32 }]}>SET</Text>
-                  <Text style={[styles.th, { flex: 1 }]}>KG</Text>
+                  <Text style={[styles.th, { flex: 1 }]}>{weightUnitLabel(profile.unit).toUpperCase()}</Text>
                   <Text style={[styles.th, { flex: 1 }]}>REPS</Text>
                   <Text style={[styles.th, { width: 44 }]}>RIR</Text>
                   <Text style={[styles.th, { width: 40, textAlign: 'center' }]}>✓</Text>
@@ -948,6 +1078,7 @@ export default function WorkoutScreen() {
                       keyboardType="decimal-pad"
                       value={set.weight}
                       onChangeText={(val) => updateSetField(sIdx, 'weight', val)}
+                      accessibilityLabel={locale === 'vi' ? `Tạ, hiệp ${set.setNumber}` : `Weight, set ${set.setNumber}`}
                       style={[styles.setInput, set.done && styles.setInputDone]}
                     />
 
@@ -955,18 +1086,26 @@ export default function WorkoutScreen() {
                       keyboardType="numeric"
                       value={set.reps}
                       onChangeText={(val) => updateSetField(sIdx, 'reps', val)}
+                      accessibilityLabel={locale === 'vi' ? `Số lần, hiệp ${set.setNumber}` : `Reps, set ${set.setNumber}`}
                       style={[styles.setInput, set.done && styles.setInputDone]}
                     />
 
                     <TextInput
                       keyboardType="numeric"
                       value={String(set.rir ?? 2)}
-                      onChangeText={(val) => updateSetField(sIdx, 'rir', parseInt(val, 10) || 0)}
+                      onChangeText={(val) => {
+                        if (val === '') updateSetField(sIdx, 'rir', undefined);
+                        else if (/^\d{1,2}$/.test(val) && Number(val) <= 10) updateSetField(sIdx, 'rir', Number(val));
+                      }}
+                      accessibilityLabel={locale === 'vi' ? `RIR, hiệp ${set.setNumber}` : `RIR, set ${set.setNumber}`}
                       style={[styles.setInput, { width: 44 }, set.done && styles.setInputDone]}
                     />
 
                     <Pressable
                       onPress={() => toggleSetDone(sIdx)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: set.done }}
+                      accessibilityLabel={locale === 'vi' ? `Hoàn thành hiệp ${set.setNumber}` : `Complete set ${set.setNumber}`}
                       style={[styles.checkBtn, set.done && styles.checkBtnDone]}
                     >
                       <Feather
@@ -980,11 +1119,11 @@ export default function WorkoutScreen() {
 
                 {/* Set Actions */}
                 <View style={styles.setActionsRow}>
-                  <Pressable onPress={() => handleAddSet(false)} style={styles.btnSmallTinted}>
+                  <Pressable onPress={() => handleAddSet(false)} accessibilityRole="button" accessibilityLabel={locale === 'vi' ? 'Thêm hiệp' : 'Add set'} style={styles.btnSmallTinted}>
                     <Feather name="plus" size={12} color="#38BDF8" />
                     <Text style={styles.btnSmallTintedText}>Set</Text>
                   </Pressable>
-                  <Pressable onPress={() => handleAddSet(true)} style={styles.btnSmallTinted}>
+                  <Pressable onPress={() => handleAddSet(true)} accessibilityRole="button" accessibilityLabel={locale === 'vi' ? 'Thêm drop set' : 'Add drop set'} style={styles.btnSmallTinted}>
                     <Feather name="zap" size={11} color="#F59E0B" />
                     <Text style={[styles.btnSmallTintedText, { color: '#F59E0B' }]}>Drop</Text>
                   </Pressable>
@@ -1029,7 +1168,7 @@ export default function WorkoutScreen() {
                       exerciseName: exName,
                       currentSet: currentActive.sets.findIndex((s) => !s.done) + 1 || 1,
                       totalSets: currentActive.sets.length,
-                      weightKg: parseFloat(currentActive.sets[0]?.weight || '0') || 0,
+                      weightKg: displayWeightToKg(parseWorkoutNumber(currentActive.sets[0]?.weight || '0') ?? 0, profile.unit),
                       reps: parseInt(currentActive.sets[0]?.reps || '0', 10) || 0,
                       totalDurationSeconds: workoutDuration,
                       totalVolumeKg: currentTotalVolume,
@@ -1059,7 +1198,7 @@ export default function WorkoutScreen() {
                     exerciseName: exName,
                     currentSet: currentActive.sets.findIndex((s) => !s.done) + 1 || 1,
                     totalSets: currentActive.sets.length,
-                    weightKg: parseFloat(currentActive.sets[0]?.weight || '0') || 0,
+                    weightKg: displayWeightToKg(parseWorkoutNumber(currentActive.sets[0]?.weight || '0') ?? 0, profile.unit),
                     reps: parseInt(currentActive.sets[0]?.reps || '0', 10) || 0,
                     totalDurationSeconds: workoutDuration,
                     totalVolumeKg: currentTotalVolume,
@@ -1161,6 +1300,7 @@ export default function WorkoutScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
             contentContainerStyle={styles.catChipsRow}
           >
             {categories.map((cat) => {
@@ -1188,19 +1328,16 @@ export default function WorkoutScreen() {
             maxToRenderPerBatch={15}
             windowSize={5}
             removeClippedSubviews={true}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}
-            renderItem={({ item: ex, index }) => {
-              const isLast = index === filteredSearchList.length - 1;
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: Math.max(insets.bottom, 24) + 60 }}
+            renderItem={({ item: ex }) => {
               const imgSrc = getExerciseImageSource(ex.image_file, ex.thumbnail_url);
               return (
                 <Pressable
                   key={ex.id}
                   onPress={() => addExerciseToWorkout(ex as unknown as ExerciseItem)}
                   style={({ pressed }) => [
-                    styles.lrow,
-                    { backgroundColor: '#111724' },
-                    pressed && styles.lrowPressed,
-                    !isLast && styles.lrowDivider,
+                    styles.searchExCard,
+                    pressed && styles.searchExCardPressed,
                   ]}
                 >
                   <View style={styles.lrowThumbRail}>
@@ -1307,7 +1444,7 @@ export default function WorkoutScreen() {
             {/* Input Total Weight */}
             <View style={styles.plateInputRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.plateLabel}>{locale === 'vi' ? 'Tổng mức tạ (kg)' : 'Target Weight (kg)'}</Text>
+                <Text style={styles.plateLabel}>{locale === 'vi' ? `Tổng mức tạ (${weightUnitLabel(profile.unit)})` : `Target Weight (${weightUnitLabel(profile.unit)})`}</Text>
                 <TextInput
                   value={plateTargetWeight}
                   onChangeText={setPlateTargetWeight}
@@ -1319,14 +1456,14 @@ export default function WorkoutScreen() {
               <View>
                 <Text style={styles.plateLabel}>{locale === 'vi' ? 'Thanh đòn (Bar)' : 'Barbell'}</Text>
                 <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                  {[20, 15, 10].map((bw) => (
+                  {(profile.unit === 'Imperial' ? [45, 35, 25] : [20, 15, 10]).map((bw) => (
                     <Pressable
                       key={bw}
                       onPress={() => setBarWeight(bw)}
                       style={[styles.barWeightBtn, barWeight === bw && styles.barWeightBtnActive]}
                     >
                       <Text style={[styles.barWeightText, barWeight === bw && styles.barWeightTextActive]}>
-                        {bw}kg
+                        {bw}{weightUnitLabel(profile.unit)}
                       </Text>
                     </Pressable>
                   ))}
@@ -1340,13 +1477,17 @@ export default function WorkoutScreen() {
                 {locale === 'vi' ? 'Mỗi bên thanh đòn:' : 'Each side weight:'}
               </Text>
               <Text style={styles.platePerSideVal}>
-                {plateBreakdown.perSide} <Text style={{ fontSize: 13, color: '#94A3B8' }}>kg</Text>
+                {plateBreakdown.perSide.toFixed(1)} <Text style={{ fontSize: 13, color: '#94A3B8' }}>{weightUnitLabel(profile.unit)}</Text>
               </Text>
             </View>
 
             {/* Visual Plates List */}
             <View style={{ marginVertical: 12 }}>
-              {plateBreakdown.plates.length > 0 ? (
+              {!plateBreakdown.canLoadBar ? (
+                <Text style={[styles.dimSub, { color: '#F59E0B', textAlign: 'center', marginVertical: 10 }]}>
+                  {locale === 'vi' ? 'Tổng tạ phải lớn hơn hoặc bằng trọng lượng thanh đòn.' : 'Target weight must be at least the bar weight.'}
+                </Text>
+              ) : plateBreakdown.plates.length > 0 ? (
                 <View style={styles.plateBadgesWrap}>
                   {plateBreakdown.plates.map((p, idx) => (
                     <View key={idx} style={styles.plateBadge}>
@@ -1359,7 +1500,9 @@ export default function WorkoutScreen() {
                 </View>
               ) : (
                 <Text style={[styles.dimSub, { textAlign: 'center', marginVertical: 10 }]}>
-                  {locale === 'vi' ? 'Chỉ cần nâng thanh đòn trống' : 'Empty bar only'}
+                  {plateBreakdown.rem > 0
+                    ? (locale === 'vi' ? `Không thể ghép chính xác; còn thiếu ${plateBreakdown.rem} ${weightUnitLabel(profile.unit)} mỗi bên.` : `No exact plate match; ${plateBreakdown.rem} ${weightUnitLabel(profile.unit)} remains per side.`)
+                    : (locale === 'vi' ? 'Chỉ cần nâng thanh đòn trống' : 'Empty bar only')}
                 </Text>
               )}
             </View>
@@ -1467,7 +1610,14 @@ const styles = StyleSheet.create({
   mediaTabText: { color: '#64748B', fontSize: 10, fontWeight: '700' },
   mediaTabTextActive: { color: '#FFF', fontWeight: '800' },
   mediaStage: { backgroundColor: '#0B0F19', borderRadius: 10, overflow: 'hidden', marginVertical: 6 },
-  gifWrapper: { height: 160, alignItems: 'center', justifyContent: 'center' },
+  gifWrapper: {
+    width: '100%',
+    height: 190,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
   exerciseMediaImage: { width: '100%', height: '100%' },
   tableHead: { flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#1E293B', gap: 6 },
   th: { color: '#64748B', fontSize: 9, fontWeight: '800' },
@@ -1537,11 +1687,35 @@ const styles = StyleSheet.create({
   pickerHeaderTitle: { color: '#FFF', fontSize: 16, fontWeight: '800' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111724', borderWidth: 1, borderColor: '#1E293B', borderRadius: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, gap: 6, marginBottom: 8 },
   searchInput: { flex: 1, color: '#FFF', fontSize: 13 },
-  catChipsRow: { paddingHorizontal: 16, gap: 6, marginBottom: 8 },
-  catChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#162032' },
-  catChipActive: { backgroundColor: '#38BDF8' },
-  catChipText: { color: '#94A3B8', fontSize: 11, fontWeight: '700' },
+  catChipsRow: { paddingHorizontal: 16, gap: 8, paddingVertical: 4, marginBottom: 12 },
+  catChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: '#162032',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catChipActive: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
+  catChipText: { color: '#94A3B8', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   catChipTextActive: { color: '#080C14', fontWeight: '900' },
+  searchExCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10,
+    backgroundColor: '#111724',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 8,
+  },
+  searchExCardPressed: {
+    backgroundColor: '#162032',
+    borderColor: '#38BDF8',
+  },
   lrowThumbRail: { width: 34, height: 34, borderRadius: 6, overflow: 'hidden', backgroundColor: '#162032', alignItems: 'center', justifyContent: 'center' },
   searchThumbImg: { width: 34, height: 34 },
   instructionText: { color: '#CBD5E1', fontSize: 11, lineHeight: 16, marginVertical: 2 },

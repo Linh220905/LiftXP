@@ -82,3 +82,6 @@ co_mat_sau_giong_100_phan_tram_anh_mau.svg
 *.mobileprovision
 *.key
 *.pem
+
+# Local QA / audits reports
+reports/

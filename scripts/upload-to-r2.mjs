@@ -8,8 +8,12 @@ const __dirname = path.dirname(__filename);
 
 const BUCKET_NAME = 'liftxp-exercises';
 const ENDPOINT = 'https://4dc394bd485fb24792dc3f1ae9412a95.r2.cloudflarestorage.com';
-const ACCESS_KEY_ID = 'c12d9022fcf7e340275e3313a4076502';
-const SECRET_ACCESS_KEY = '74f759d7f6b965c7e2ee5493bad348d429f9bd5906620e480dc630757641aa6e';
+const ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
+const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
+
+if (!ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
+  throw new Error('Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY before uploading.');
+}
 
 const ASSETS_BASE = path.resolve(__dirname, '../artifacts/train-xp/assets/exercises');
 

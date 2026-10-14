@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Image,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -19,6 +20,7 @@ import { MUSCLE_NAMES, type MuscleSlug } from '@/lib/muscles';
 import { type ProgressionPolicy } from '@/lib/progression';
 import { getExerciseImageSource } from '@/lib/exerciseAssets';
 import { useI18n } from '@/lib/i18n';
+import { formatWeight, weightUnitLabel } from '@/lib/units';
 
 // Exercise Database
 import EXERCISES_DATA from '../../../../data/exercises_supabase_seed.json';
@@ -28,8 +30,36 @@ const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon..Sun
 
 export default function PlanScreen() {
   const insets = useSafeAreaInsets();
-  const { routines, weekSchedule, assignWeekSchedule, addRoutine, updateRoutine, deleteRoutine, loadStarterPlan } = useAppState();
+  const { routines, weekSchedule, assignWeekSchedule, addRoutine, updateRoutine, deleteRoutine, loadStarterPlan, profile, updateProfile } = useAppState();
   const { t, locale } = useI18n();
+
+  const splitTitle = useMemo(() => {
+    const days = profile.daysPerWeek || 3;
+    if (days === 2) return locale === 'vi' ? 'Full Body Split (2 buổi/tuần)' : 'Full Body Split (2 days/wk)';
+    if (days === 3) return locale === 'vi' ? 'Push / Pull / Legs (3 buổi/tuần)' : 'Push / Pull / Legs (3 days/wk)';
+    if (days === 4) return locale === 'vi' ? 'Upper / Lower Split (4 buổi/tuần)' : 'Upper / Lower Split (4 days/wk)';
+    if (days === 5) return locale === 'vi' ? 'PPL + Upper/Lower (5 buổi/tuần)' : 'PPL + Upper/Lower (5 days/wk)';
+    return locale === 'vi' ? 'PPL High Volume (6 buổi/tuần)' : 'PPL High Volume (6 days/wk)';
+  }, [profile.daysPerWeek, locale]);
+
+  const handleRegeneratePlan = (overrideDays?: number) => {
+    const targetDays = overrideDays ?? profile.daysPerWeek ?? 3;
+    const replace = () => loadStarterPlan({ ...profile, daysPerWeek: targetDays });
+    if (routines.length === 0) {
+      replace();
+      return;
+    }
+    Alert.alert(
+      locale === 'vi' ? 'Tạo lại giáo án?' : 'Replace your plan?',
+      locale === 'vi'
+        ? `Tạo lại giáo án tối ưu cho ${targetDays} buổi/tuần? Lịch hiện tại sẽ được thay thế.`
+        : `Generate new plan tailored for ${targetDays} days/week? Current routines will be replaced.`,
+      [
+        { text: locale === 'vi' ? 'Hủy' : 'Cancel', style: 'cancel' },
+        { text: locale === 'vi' ? 'Tạo lại' : 'Replace', style: 'destructive', onPress: replace },
+      ],
+    );
+  };
 
   // Day Assignment Sheet
   const [assigningDay, setAssigningDay] = useState<number | null>(null);
@@ -99,6 +129,29 @@ export default function PlanScreen() {
     }
     return list;
   }, [librarySearch, libraryMuscleFilter, libraryEquipmentFilter]);
+
+  const routineMuscles = useMemo(() => {
+    if (!editingRoutine || !editingRoutine.exercises || editingRoutine.exercises.length === 0) {
+      return { primary: [] as string[], secondary: [] as string[] };
+    }
+    const primarySet = new Set<string>();
+    const secondarySet = new Set<string>();
+
+    editingRoutine.exercises.forEach((item) => {
+      const data = exMap.get(item.id);
+      if (data) {
+        (data.primary_muscles || []).forEach((m) => primarySet.add(m));
+        (data.secondary_muscles || []).forEach((m) => secondarySet.add(m));
+      }
+    });
+
+    const secondaryFiltered = Array.from(secondarySet).filter((m) => !primarySet.has(m));
+
+    return {
+      primary: Array.from(primarySet),
+      secondary: secondaryFiltered,
+    };
+  }, [editingRoutine?.exercises, exMap]);
 
   const handleAddExToRoutine = (routineId: string, exId: string) => {
     const routine = routines.find((r) => r.id === routineId);
@@ -226,6 +279,8 @@ export default function PlanScreen() {
               setEditingRoutine(null);
             }}
             style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={locale === 'vi' ? 'Đóng chỉnh sửa routine' : 'Close routine editor'}
           >
             <Feather name="chevron-left" size={20} color="#FFF" />
           </Pressable>
@@ -234,9 +289,10 @@ export default function PlanScreen() {
             onChangeText={(val) => setEditingRoutine({ ...editingRoutine, name: val })}
             placeholder={t.plan.routineName}
             placeholderTextColor="#64748B"
+            accessibilityLabel={locale === 'vi' ? 'Tên routine' : 'Routine name'}
             style={styles.routineTitleInput}
           />
-          <Pressable onPress={handleSaveRoutine} style={styles.saveBtn}>
+          <Pressable onPress={handleSaveRoutine} accessibilityRole="button" accessibilityLabel={t.common.save} style={styles.saveBtn}>
             <Text style={styles.saveBtnText}>{t.common.save}</Text>
           </Pressable>
         </View>
@@ -256,6 +312,8 @@ export default function PlanScreen() {
                 setProgressionModalOpen(true);
               }}
               style={[styles.lrow, { paddingVertical: 12 }]}
+              accessibilityRole="button"
+              accessibilityLabel={locale === 'vi' ? 'Chọn chính sách tăng tiến' : 'Choose progression policy'}
             >
               <View style={styles.lrowIconRail}>
                 <Feather name="trending-up" size={16} color="#38BDF8" />
@@ -298,7 +356,7 @@ export default function PlanScreen() {
                           {ex?.name || item.id}
                         </Text>
                         <Text style={styles.lrowSub} numberOfLines={1}>
-                          {ex?.name_vi ? `${ex.name_vi} · ` : ''}{item.sets} {t.common.sets} × {item.reps} reps @ {item.targetWeight || 40}kg
+                          {ex?.name_vi ? `${ex.name_vi} · ` : ''}{item.sets} {t.common.sets} × {item.reps} reps @ {formatWeight(item.targetWeight ?? 40, profile.unit, 1)} {weightUnitLabel(profile.unit)}
                         </Text>
                       </View>
 
@@ -307,18 +365,21 @@ export default function PlanScreen() {
                         {idx > 0 && (
                           <Pressable
                             onPress={() => handleToggleSuperset(idx)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: Boolean(linkedPrev) }}
+                            accessibilityLabel={locale === 'vi' ? `Ghép siêu hiệp cho bài ${idx + 1}` : `Toggle superset for exercise ${idx + 1}`}
                             style={[styles.controlBtn, linkedPrev && styles.controlBtnActiveSS]}
                           >
                             <Feather name="link" size={13} color={linkedPrev ? '#F59E0B' : '#94A3B8'} />
                           </Pressable>
                         )}
-                        <Pressable onPress={() => handleMoveEx(idx, -1)} style={styles.controlBtn}>
+                        <Pressable onPress={() => handleMoveEx(idx, -1)} accessibilityRole="button" accessibilityLabel={locale === 'vi' ? `Di chuyển bài ${idx + 1} lên` : `Move exercise ${idx + 1} up`} style={styles.controlBtn}>
                           <Feather name="chevron-up" size={14} color="#94A3B8" />
                         </Pressable>
-                        <Pressable onPress={() => handleMoveEx(idx, 1)} style={styles.controlBtn}>
+                        <Pressable onPress={() => handleMoveEx(idx, 1)} accessibilityRole="button" accessibilityLabel={locale === 'vi' ? `Di chuyển bài ${idx + 1} xuống` : `Move exercise ${idx + 1} down`} style={styles.controlBtn}>
                           <Feather name="chevron-down" size={14} color="#94A3B8" />
                         </Pressable>
-                        <Pressable onPress={() => handleRemoveEx(idx)} style={styles.controlBtnDanger}>
+                        <Pressable onPress={() => handleRemoveEx(idx)} accessibilityRole="button" accessibilityLabel={locale === 'vi' ? `Xóa bài ${idx + 1}` : `Remove exercise ${idx + 1}`} style={styles.controlBtnDanger}>
                           <Feather name="trash-2" size={13} color="#EF4444" />
                         </Pressable>
                       </View>
@@ -336,13 +397,37 @@ export default function PlanScreen() {
           {/* Mannequin Target Highlight for Routine Coverage */}
           {editingRoutine.exercises.length > 0 && (
             <View style={[styles.card, { marginTop: 14 }]}>
-              <Text style={styles.cardHeadTitle}>{t.plan.targetMuscles}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={styles.cardHeadTitle}>{t.plan.targetMuscles}</Text>
+                <View style={styles.targetBadge}>
+                  <Text style={styles.targetBadgeText}>
+                    {routineMuscles.primary.length} {locale === 'vi' ? 'nhóm chính' : 'primary'}
+                  </Text>
+                </View>
+              </View>
+
               <View style={{ alignItems: 'center', marginVertical: 6 }}>
                 <ExerciseMannequinHighlight
-                  primaryMuscles={['chest', 'deltoids', 'triceps', 'upper-back', 'quadriceps']}
-                  secondaryMuscles={['biceps', 'hamstring', 'calves']}
+                  primaryMuscles={routineMuscles.primary}
+                  secondaryMuscles={routineMuscles.secondary}
                   height={200}
                 />
+              </View>
+
+              {/* Muscle Chips Breakdown */}
+              <View style={styles.routineMusclesChipsRow}>
+                {routineMuscles.primary.map((m) => (
+                  <View key={`pri-${m}`} style={styles.primaryMuscleChip}>
+                    <View style={styles.primaryDot} />
+                    <Text style={styles.primaryMuscleChipText}>{getLocalizedMuscleName(m)}</Text>
+                  </View>
+                ))}
+                {routineMuscles.secondary.map((m) => (
+                  <View key={`sec-${m}`} style={styles.secondaryMuscleChip}>
+                    <View style={styles.secondaryDot} />
+                    <Text style={styles.secondaryMuscleChipText}>{getLocalizedMuscleName(m)}</Text>
+                  </View>
+                ))}
               </View>
             </View>
           )}
@@ -505,13 +590,65 @@ export default function PlanScreen() {
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              loadStarterPlan();
+              handleRegeneratePlan();
             }}
             style={styles.iconBtn}
             hitSlop={8}
           >
             <Feather name="refresh-cw" size={16} color="#38BDF8" />
           </Pressable>
+        </View>
+
+        {/* ACTIVE SPLIT & DAYS PER WEEK */}
+        <View style={styles.splitBanner}>
+          <View style={styles.rowBetween}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.splitBadgeLabel}>
+                {locale === 'vi' ? 'GIÁO ÁN ĐANG ÁP DỤNG' : 'ACTIVE TRAINING SPLIT'}
+              </Text>
+              <Text style={styles.splitBadgeTitle}>{splitTitle}</Text>
+              <Text style={styles.splitBadgeSub}>
+                {profile.workoutDuration || '60 mins'} • {profile.experience || 'Intermediate'} • {profile.goal || 'Hypertrophy'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleRegeneratePlan();
+              }}
+              style={styles.regenBtn}
+            >
+              <Feather name="refresh-cw" size={12} color="#080C14" />
+              <Text style={styles.regenBtnText}>{locale === 'vi' ? 'Tạo lại' : 'Reset'}</Text>
+            </Pressable>
+          </View>
+
+          {/* Quick daysPerWeek frequency switcher */}
+          <View style={styles.daysSelectorRow}>
+            <Text style={styles.daysSelectorLabel}>
+              {locale === 'vi' ? 'Tần suất / tuần:' : 'Frequency:'}
+            </Text>
+            <View style={styles.daysChipsContainer}>
+              {[2, 3, 4, 5, 6].map((num) => {
+                const isActive = (profile.daysPerWeek || 3) === num;
+                return (
+                  <Pressable
+                    key={num}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      updateProfile({ daysPerWeek: num });
+                      handleRegeneratePlan(num);
+                    }}
+                    style={[styles.dayChip, isActive && styles.dayChipActive]}
+                  >
+                    <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>
+                      {num}{locale === 'vi' ? 'b' : 'd'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         {/* SECTION 1: WEEK SCHEDULE */}
@@ -757,6 +894,7 @@ export default function PlanScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
             contentContainerStyle={styles.filterChipsRow}
           >
             {['All', 'Chest', 'Back', 'Shoulders', 'Legs', 'Arms', 'Core'].map((m) => {
@@ -772,31 +910,6 @@ export default function PlanScreen() {
                 >
                   <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
                     {m === 'All' ? (locale === 'vi' ? 'Tất cả cơ' : 'All Muscles') : m}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          {/* Equipment Filter Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.filterChipsRow, { marginTop: 4, marginBottom: 8 }]}
-          >
-            {['All', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'].map((eq) => {
-              const isSel = libraryEquipmentFilter === eq;
-              return (
-                <Pressable
-                  key={eq}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setLibraryEquipmentFilter(eq);
-                  }}
-                  style={[styles.filterChip, isSel && styles.filterChipActive]}
-                >
-                  <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
-                    {eq === 'All' ? (locale === 'vi' ? 'Mọi dụng cụ' : 'All Equipment') : eq}
                   </Text>
                 </Pressable>
               );
@@ -987,6 +1100,86 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#FFF',
     letterSpacing: -0.4,
+  },
+  splitBanner: {
+    backgroundColor: '#111724',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 14,
+    marginBottom: 16,
+  },
+  splitBadgeLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  splitBadgeTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: -0.2,
+  },
+  splitBadgeSub: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+  },
+  regenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#38BDF8',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  regenBtnText: {
+    color: '#080C14',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  daysSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  daysSelectorLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  daysChipsContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  dayChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#162032',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  dayChipActive: {
+    backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
+  },
+  dayChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dayChipTextActive: {
+    color: '#080C14',
+    fontWeight: '900',
   },
   iconBtn: {
     width: 32,
@@ -1284,10 +1477,19 @@ const styles = StyleSheet.create({
   libraryIconBox: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#14233D', alignItems: 'center', justifyContent: 'center' },
   libraryBannerTitle: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   libraryBannerSub: { color: '#64748B', fontSize: 11, marginTop: 2 },
-  filterChipsRow: { paddingHorizontal: 16, gap: 6 },
-  filterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#162032', borderWidth: 1, borderColor: '#1E293B' },
+  filterChipsRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 12 },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#162032',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   filterChipActive: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
-  filterChipText: { color: '#94A3B8', fontSize: 11, fontWeight: '700' },
+  filterChipText: { color: '#94A3B8', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   filterChipTextActive: { color: '#080C14', fontWeight: '900' },
   btnAddExSmall: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#162032', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#1E293B' },
   btnAddExSmallText: { color: '#38BDF8', fontSize: 11, fontWeight: '700' },
@@ -1296,4 +1498,68 @@ const styles = StyleSheet.create({
   btnSheetCancel: { backgroundColor: '#162032', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   btnSheetCancelText: { color: '#94A3B8', fontSize: 13, fontWeight: '700' },
   instructionText: { color: '#CBD5E1', fontSize: 11, lineHeight: 16, marginVertical: 3 },
+  targetBadge: {
+    backgroundColor: '#162032',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  targetBadgeText: {
+    color: '#38BDF8',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  routineMusclesChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+    justifyContent: 'center',
+  },
+  primaryMuscleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  primaryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22C55E',
+  },
+  primaryMuscleChipText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  secondaryMuscleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  secondaryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38BDF8',
+  },
+  secondaryMuscleChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
 });

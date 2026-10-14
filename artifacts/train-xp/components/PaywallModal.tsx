@@ -1,12 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
-  Image,
   Linking,
   Modal,
   Pressable,
@@ -27,17 +24,12 @@ import {
   TERMS_OF_USE_URL,
 } from '@/lib/purchases';
 
-const { width } = Dimensions.get('window');
-
 const BLUE_ACCENT = '#38BDF8';
-const DARK_BG = '#090D16';
-const CARD_BG = '#121A28';
-const CARD_SELECTED_BG = '#13223A';
+const DARK_BG = '#070B14';
+const CARD_BG = '#0E1726';
+const CARD_SELECTED_BG = '#11233E';
 const BORDER_COLOR = '#1E293B';
 const TEXT_MUTED = '#94A3B8';
-
-// Fallback / Hero image
-const PAYWALL_HERO_IMG = require('../assets/images/paywall_hero.png');
 
 interface PaywallModalProps {
   visible?: boolean;
@@ -67,10 +59,10 @@ export function PaywallModal({
     weekly: PackageDisplay;
   } | null>(null);
 
-  // Soft delay for close button (2 seconds to maximize read time)
+  // Soft delay for close button (1.5 seconds)
   useEffect(() => {
     if (!visible) return;
-    const timer = setTimeout(() => setCanClose(true), 2000);
+    const timer = setTimeout(() => setCanClose(true), 1500);
     return () => clearTimeout(timer);
   }, [visible]);
 
@@ -100,21 +92,24 @@ export function PaywallModal({
     onClose();
   };
 
-  const handleContinue = async () => {
+  const handleContinue = async (plan: 'annual' | 'monthly' | 'weekly' = selectedPlan) => {
     if (loading) return;
     setLoading(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const pkg = offerings ? offerings[selectedPlan] : null;
-      const isSuccess = pkg ? await purchaseSubscription(pkg) : true;
+      const pkg = offerings ? offerings[plan] : null;
+      if (!pkg?.rcPackage) {
+        Alert.alert(t.paywall.purchaseError, t.paywall.purchaseErrorDefault);
+        return;
+      }
+      const isSuccess = await purchaseSubscription(pkg);
 
       if (isSuccess) {
         setProStatus(true);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (onSubscribe) onSubscribe(selectedPlan);
         if (onSuccess) onSuccess();
-        onClose();
+        else onSubscribe?.(plan);
       }
     } catch (err: any) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -139,7 +134,7 @@ export function PaywallModal({
             text: 'OK',
             onPress: () => {
               if (onSuccess) onSuccess();
-              onClose();
+              else onSubscribe?.(selectedPlan);
             },
           },
         ]);
@@ -162,238 +157,223 @@ export function PaywallModal({
   const monthlyPkg = offerings?.monthly;
   const weeklyPkg = offerings?.weekly;
 
-  const isTrialSelected = selectedPlan === 'annual';
+  const isTrialSelected = Boolean(offerings?.[selectedPlan]?.hasTrial);
+
+  const proFeatures = [
+    { icon: 'trending-up', title: t.paywall.feature2 },
+    { icon: 'activity', title: t.paywall.feature3 },
+    { icon: 'award', title: t.paywall.feature1 },
+    { icon: 'layers', title: t.paywall.feature4 },
+  ] as const;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} statusBarTranslucent>
-      <View style={[styles.container, { backgroundColor: DARK_BG }]}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top + 6,
+            paddingBottom: Math.max(insets.bottom, 12),
+          },
+        ]}
+      >
         <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 36 },
-          ]}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          {/* Top Hero Section with Ambient Fade */}
-          <View style={styles.heroContainer}>
-            <Image
-              source={PAYWALL_HERO_IMG}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
-            {/* Soft gradient from mid downwards */}
-            <LinearGradient
-              colors={[
-                'rgba(9, 13, 22, 0.1)',
-                'rgba(9, 13, 22, 0.3)',
-                'rgba(9, 13, 22, 0.75)',
-                DARK_BG,
-              ]}
-              locations={[0, 0.4, 0.75, 1]}
-              style={styles.heroGradient}
-            />
+          {/* 1. Top Controls Bar */}
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={handleRestore}
+              hitSlop={12}
+              disabled={loading}
+              style={styles.restoreBtn}
+            >
+              <Text style={styles.restoreText}>{t.paywall.restorePurchases}</Text>
+            </Pressable>
 
-            {/* Top Bar Floating Controls */}
-            <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+            {canClose ? (
               <Pressable
-                onPress={handleRestore}
-                hitSlop={12}
-                disabled={loading}
-                style={styles.restoreBtn}
+                onPress={handleCloseAttempt}
+                hitSlop={14}
+                style={styles.closeButton}
               >
-                <Text style={styles.restoreText}>{t.paywall.restorePurchases}</Text>
+                <Feather name="x" size={18} color="#94A3B8" />
               </Pressable>
-
-              {canClose ? (
-                <Pressable
-                  onPress={handleCloseAttempt}
-                  hitSlop={14}
-                  style={styles.closeButton}
-                >
-                  <Feather name="x" size={18} color="#FFFFFF" />
-                </Pressable>
-              ) : (
-                <View style={styles.closePlaceholder} />
-              )}
-            </View>
+            ) : (
+              <View style={styles.closePlaceholder} />
+            )}
           </View>
 
-          {/* Main Body Content */}
-          <View style={styles.contentWrap}>
-            {/* Headline Text */}
-            <View style={styles.headlineSection}>
-              <View style={styles.proPillBadge}>
-                <Feather name="zap" size={12} color="#090D16" />
-                <Text style={styles.proPillText}>TRAINXP PRO</Text>
-              </View>
-              <Text style={styles.heroTitle}>{t.paywall.heroTitle}</Text>
-              <Text style={styles.heroSubtitle}>{t.paywall.heroSubtitle}</Text>
+          {/* 2. Bold Headline / Branding */}
+          <View style={styles.headlineSection}>
+            <View style={styles.proPillBadge}>
+              <Feather name="zap" size={12} color="#070B14" />
+              <Text style={styles.proPillText}>TRAINXP PRO</Text>
             </View>
+            <Text style={styles.heroTitle}>{t.paywall.heroTitle}</Text>
+            <Text style={styles.heroSubtitle}>{t.paywall.heroSubtitle}</Text>
+          </View>
 
-            {/* Feature Perks Checklist */}
-            <View style={styles.featureBox}>
-              <Text style={styles.featureSectionTitle}>{t.paywall.featureTitle}</Text>
-              {[
-                t.paywall.feature1,
-                t.paywall.feature2,
-                t.paywall.feature3,
-                t.paywall.feature4,
-              ].map((feat, idx) => (
-                <View key={idx} style={styles.featureRow}>
-                  <View style={styles.checkIconWrap}>
-                    <Feather name="check" size={14} color={BLUE_ACCENT} />
-                  </View>
-                  <Text style={styles.featureText}>{feat}</Text>
+          {/* 3. Comprehensive Feature Highlights (4 Key Pillars) */}
+          <View style={styles.featureBox}>
+            {proFeatures.map((feat, idx) => (
+              <View key={idx} style={styles.featureRow}>
+                <View style={styles.featureIconWrap}>
+                  <Feather name={feat.icon} size={13} color={BLUE_ACCENT} />
                 </View>
-              ))}
-            </View>
-
-            {/* 3 Pricing Cards */}
-            <View style={styles.pricingSection}>
-              {/* 1. Annual (Best Value) */}
-              <Pressable
-                onPress={() => handleSelectPlan('annual')}
-                style={[
-                  styles.planCard,
-                  selectedPlan === 'annual' && styles.planCardSelected,
-                ]}
-              >
-                <View style={styles.badgeTag}>
-                  <Text style={styles.badgeTagText}>{t.paywall.bestValueBadge}</Text>
-                </View>
-
-                <View style={styles.planLeft}>
-                  <View
-                    style={[
-                      styles.radioCircle,
-                      selectedPlan === 'annual' && styles.radioCircleActive,
-                    ]}
-                  >
-                    {selectedPlan === 'annual' && <View style={styles.radioDot} />}
-                  </View>
-                  <View style={styles.planInfo}>
-                    <Text style={styles.planTitle}>{t.paywall.annualTitle}</Text>
-                    <Text style={styles.planSub}>{t.paywall.annualSub}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.planPrice}>
-                  <Text style={styles.mainPrice}>
-                    {annualPkg?.perMonthPrice || '41.500 ₫'}
-                    <Text style={styles.perUnitText}>{t.paywall.perMonth}</Text>
-                  </Text>
-                  <Text style={styles.subPrice}>
-                    {annualPkg?.priceString || '499.000 ₫'} {t.paywall.perYear}
-                  </Text>
-                </View>
-              </Pressable>
-
-              {/* 2. Monthly (Flexible) */}
-              <Pressable
-                onPress={() => handleSelectPlan('monthly')}
-                style={[
-                  styles.planCard,
-                  selectedPlan === 'monthly' && styles.planCardSelected,
-                ]}
-              >
-                <View style={styles.planLeft}>
-                  <View
-                    style={[
-                      styles.radioCircle,
-                      selectedPlan === 'monthly' && styles.radioCircleActive,
-                    ]}
-                  >
-                    {selectedPlan === 'monthly' && <View style={styles.radioDot} />}
-                  </View>
-                  <View style={styles.planInfo}>
-                    <Text style={styles.planTitle}>{t.paywall.monthlyTitle}</Text>
-                    <Text style={styles.planSub}>{t.paywall.monthlySub}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.planPrice}>
-                  <Text style={styles.mainPrice}>
-                    {monthlyPkg?.priceString || '129.000 ₫'}
-                  </Text>
-                  <Text style={styles.subPrice}>{t.paywall.perMonth}</Text>
-                </View>
-              </Pressable>
-
-              {/* 3. Weekly (Short Term) */}
-              <Pressable
-                onPress={() => handleSelectPlan('weekly')}
-                style={[
-                  styles.planCard,
-                  selectedPlan === 'weekly' && styles.planCardSelected,
-                ]}
-              >
-                <View style={styles.planLeft}>
-                  <View
-                    style={[
-                      styles.radioCircle,
-                      selectedPlan === 'weekly' && styles.radioCircleActive,
-                    ]}
-                  >
-                    {selectedPlan === 'weekly' && <View style={styles.radioDot} />}
-                  </View>
-                  <View style={styles.planInfo}>
-                    <Text style={styles.planTitle}>{t.paywall.weeklyTitle}</Text>
-                    <Text style={styles.planSub}>{t.paywall.weeklySub}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.planPrice}>
-                  <Text style={styles.mainPrice}>
-                    {weeklyPkg?.priceString || '49.000 ₫'}
-                  </Text>
-                  <Text style={styles.subPrice}>{t.paywall.perWeek}</Text>
-                </View>
-              </Pressable>
-            </View>
-
-            {/* Bottom Actions & Guarantee */}
-            <View style={styles.ctaSection}>
-              <Pressable
-                onPress={handleContinue}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.ctaButton,
-                  { backgroundColor: BLUE_ACCENT, opacity: pressed || loading ? 0.88 : 1 },
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#090D16" />
-                ) : (
-                  <View style={styles.ctaRow}>
-                    <Text style={styles.ctaText}>
-                      {isTrialSelected ? t.paywall.startTrialCta : t.paywall.startCta}
-                    </Text>
-                    <Feather name="arrow-right" size={18} color="#090D16" />
-                  </View>
-                )}
-              </Pressable>
-
-              <View style={styles.guaranteeRow}>
-                <Feather name="shield" size={13} color={TEXT_MUTED} />
-                <Text style={styles.guaranteeText}>{t.paywall.noCommitment}</Text>
-              </View>
-
-              {/* Apple Mandatory Subscription Disclosures & Legal Links */}
-              <View style={styles.legalSection}>
-                <Text style={styles.subscriptionDisclaimer}>
-                  {t.paywall.autoRenewDisclosure}
+                <Text style={styles.featureText} numberOfLines={2}>
+                  {feat.title}
                 </Text>
+              </View>
+            ))}
+          </View>
 
-                <View style={styles.legalLinksRow}>
-                  <Pressable onPress={() => handleOpenLink(TERMS_OF_USE_URL)} hitSlop={8}>
-                    <Text style={styles.legalLinkText}>{t.paywall.termsOfUse}</Text>
-                  </Pressable>
-                  <Text style={styles.legalBullet}>•</Text>
-                  <Pressable onPress={() => handleOpenLink(PRIVACY_POLICY_URL)} hitSlop={8}>
-                    <Text style={styles.legalLinkText}>{t.paywall.privacyPolicy}</Text>
-                  </Pressable>
+          {/* 4. Enlarged & Prominent Pricing Cards (Annual, Monthly, Weekly) */}
+          <View style={styles.pricingSection}>
+            {/* Annual (Best Value) */}
+            <Pressable
+              onPress={() => handleSelectPlan('annual')}
+              style={[
+                styles.planCard,
+                selectedPlan === 'annual' && styles.planCardSelected,
+              ]}
+            >
+              <View style={styles.badgeTag}>
+                <Text style={styles.badgeTagText}>{t.paywall.bestValueBadge}</Text>
+              </View>
+
+              <View style={styles.planLeft}>
+                <View
+                  style={[
+                    styles.radioCircle,
+                    selectedPlan === 'annual' && styles.radioCircleActive,
+                  ]}
+                >
+                  {selectedPlan === 'annual' && <View style={styles.radioDot} />}
                 </View>
+                <View style={styles.planInfo}>
+                  <Text style={styles.planTitle}>{t.paywall.annualTitle}</Text>
+                  <Text style={styles.planSub}>{t.paywall.annualSub}</Text>
+                </View>
+              </View>
+
+              <View style={styles.planPrice}>
+                <Text style={styles.mainPrice}>
+                  {annualPkg?.perMonthPrice || '41.500 ₫'}
+                  <Text style={styles.perUnitText}>{t.paywall.perMonth}</Text>
+                </Text>
+                <Text style={styles.subPrice}>
+                  {annualPkg?.priceString || '—'} {t.paywall.perYear}
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Monthly (Flexible) */}
+            <Pressable
+              onPress={() => handleSelectPlan('monthly')}
+              style={[
+                styles.planCard,
+                selectedPlan === 'monthly' && styles.planCardSelected,
+              ]}
+            >
+              <View style={styles.planLeft}>
+                <View
+                  style={[
+                    styles.radioCircle,
+                    selectedPlan === 'monthly' && styles.radioCircleActive,
+                  ]}
+                >
+                  {selectedPlan === 'monthly' && <View style={styles.radioDot} />}
+                </View>
+                <View style={styles.planInfo}>
+                  <Text style={styles.planTitle}>{t.paywall.monthlyTitle}</Text>
+                  <Text style={styles.planSub}>{t.paywall.monthlySub}</Text>
+                </View>
+              </View>
+
+              <View style={styles.planPrice}>
+                <Text style={styles.mainPrice}>
+                  {monthlyPkg?.priceString || '—'}
+                </Text>
+                <Text style={styles.subPrice}>{t.paywall.perMonth}</Text>
+              </View>
+            </Pressable>
+
+            {/* Weekly (Short Term) */}
+            <Pressable
+              onPress={() => handleSelectPlan('weekly')}
+              style={[
+                styles.planCard,
+                selectedPlan === 'weekly' && styles.planCardSelected,
+              ]}
+            >
+              <View style={styles.planLeft}>
+                <View
+                  style={[
+                    styles.radioCircle,
+                    selectedPlan === 'weekly' && styles.radioCircleActive,
+                  ]}
+                >
+                  {selectedPlan === 'weekly' && <View style={styles.radioDot} />}
+                </View>
+                <View style={styles.planInfo}>
+                  <Text style={styles.planTitle}>{t.paywall.weeklyTitle}</Text>
+                  <Text style={styles.planSub}>{t.paywall.weeklySub}</Text>
+                </View>
+              </View>
+
+              <View style={styles.planPrice}>
+                <Text style={styles.mainPrice}>
+                  {weeklyPkg?.priceString || '—'}
+                </Text>
+                <Text style={styles.subPrice}>{t.paywall.perWeek}</Text>
+              </View>
+            </Pressable>
+          </View>
+
+          {/* 5. Bottom Actions & Disclosures */}
+          <View style={styles.ctaSection}>
+            <Pressable
+              onPress={() => void handleContinue()}
+              disabled={loading || !offerings?.[selectedPlan]?.rcPackage}
+              style={({ pressed }) => [
+                styles.ctaButton,
+                { opacity: pressed || loading ? 0.9 : !offerings?.[selectedPlan]?.rcPackage ? 0.5 : 1 },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#070B14" />
+              ) : (
+                <View style={styles.ctaRow}>
+                  <Text style={styles.ctaText}>
+                    {isTrialSelected ? t.paywall.startTrialCta : t.paywall.startCta}
+                  </Text>
+                  <Feather name="arrow-right" size={17} color="#070B14" />
+                </View>
+              )}
+            </Pressable>
+
+            <View style={styles.guaranteeRow}>
+              <Feather name="shield" size={12} color={TEXT_MUTED} />
+              <Text style={styles.guaranteeText}>{t.paywall.noCommitment}</Text>
+            </View>
+
+            {/* Apple Mandatory Disclosures */}
+            <View style={styles.legalSection}>
+              <Text style={styles.subscriptionDisclaimer} numberOfLines={2}>
+                {t.paywall.autoRenewDisclosure}
+              </Text>
+
+              <View style={styles.legalLinksRow}>
+                <Pressable onPress={() => handleOpenLink(TERMS_OF_USE_URL)} hitSlop={8}>
+                  <Text style={styles.legalLinkText}>{t.paywall.termsOfUse}</Text>
+                </Pressable>
+                <Text style={styles.legalBullet}>•</Text>
+                <Pressable onPress={() => handleOpenLink(PRIVACY_POLICY_URL)} hitSlop={8}>
+                  <Text style={styles.legalLinkText}>{t.paywall.privacyPolicy}</Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -412,7 +392,7 @@ export function PaywallModal({
           <View style={styles.downsellBackdrop}>
             <View style={styles.downsellCard}>
               <View style={styles.downsellIconCircle}>
-                <Feather name="gift" size={28} color={BLUE_ACCENT} />
+                <Feather name="gift" size={26} color={BLUE_ACCENT} />
               </View>
 
               <Text style={styles.downsellTitle}>{t.paywall.downsellTitle}</Text>
@@ -421,7 +401,7 @@ export function PaywallModal({
               <View style={styles.downsellOfferBox}>
                 <Text style={styles.downsellOfferBadge}>{t.paywall.bestValueBadge}</Text>
                 <Text style={styles.downsellOfferPrice}>
-                  {annualPkg?.priceString || '499.000 ₫'} {t.paywall.perYear}
+                  {annualPkg?.priceString || '—'} {t.paywall.perYear}
                 </Text>
                 <Text style={styles.downsellOfferSub}>{t.paywall.annualPerMonth}</Text>
               </View>
@@ -430,7 +410,7 @@ export function PaywallModal({
                 onPress={() => {
                   setShowDownsellModal(false);
                   setSelectedPlan('annual');
-                  void handleContinue();
+                  void handleContinue('annual');
                 }}
                 style={styles.downsellCtaBtn}
               >
@@ -457,47 +437,29 @@ export function PaywallModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: DARK_BG,
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  heroContainer: {
-    width: '100%',
-    height: 280,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 6,
   },
   topBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    zIndex: 10,
+    marginBottom: 4,
   },
   restoreBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    backgroundColor: 'rgba(9, 13, 22, 0.6)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#121927',
   },
   restoreText: {
-    fontSize: 12,
-    color: '#CBD5E1',
+    fontSize: 11,
+    color: '#94A3B8',
     fontWeight: '700',
   },
   closeButton: {
@@ -506,19 +468,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(9, 13, 22, 0.65)',
+    backgroundColor: '#121927',
   },
   closePlaceholder: {
     width: 32,
     height: 32,
   },
-  contentWrap: {
-    paddingHorizontal: 20,
-    marginTop: -20,
-  },
   headlineSection: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginVertical: 4,
   },
   proPillBadge: {
     flexDirection: 'row',
@@ -526,68 +484,64 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: BLUE_ACCENT,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    marginBottom: 10,
+    paddingVertical: 3.5,
+    borderRadius: 14,
+    marginBottom: 8,
   },
   proPillText: {
-    color: '#090D16',
+    color: '#070B14',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    lineHeight: 28,
-    marginBottom: 6,
+    lineHeight: 29,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   heroSubtitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#94A3B8',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   featureBox: {
-    backgroundColor: CARD_BG,
+    backgroundColor: '#0C1322',
     borderRadius: 16,
-    padding: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: BORDER_COLOR,
-    marginBottom: 16,
-    gap: 10,
-  },
-  featureSectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: BLUE_ACCENT,
-    letterSpacing: 0.8,
-    marginBottom: 2,
+    gap: 8,
+    marginVertical: 4,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  checkIconWrap: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+  featureIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   featureText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#E2E8F0',
     fontWeight: '600',
     flex: 1,
+    lineHeight: 17,
   },
   pricingSection: {
     gap: 10,
-    marginBottom: 20,
+    marginVertical: 4,
   },
   planCard: {
     backgroundColor: CARD_BG,
@@ -604,26 +558,27 @@ const styles = StyleSheet.create({
   planCardSelected: {
     borderColor: BLUE_ACCENT,
     backgroundColor: CARD_SELECTED_BG,
+    borderWidth: 2,
     shadowColor: BLUE_ACCENT,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.25,
     shadowRadius: 10,
-    elevation: 3,
+    elevation: 4,
   },
   badgeTag: {
     position: 'absolute',
-    top: -10,
+    top: -9,
     right: 14,
     backgroundColor: BLUE_ACCENT,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 2.5,
     borderRadius: 999,
   },
   badgeTagText: {
-    color: '#090D16',
-    fontSize: 10,
+    color: '#070B14',
+    fontSize: 9.5,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   planLeft: {
     flexDirection: 'row',
@@ -635,13 +590,14 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#475569',
     alignItems: 'center',
     justifyContent: 'center',
   },
   radioCircleActive: {
     borderColor: BLUE_ACCENT,
+    borderWidth: 2,
   },
   radioDot: {
     width: 10,
@@ -653,13 +609,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   planTitle: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
     color: '#FFFFFF',
     marginBottom: 2,
   },
   planSub: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#94A3B8',
     fontWeight: '500',
   },
@@ -667,33 +623,35 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   mainPrice: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '900',
     color: '#FFFFFF',
   },
   perUnitText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#94A3B8',
     fontWeight: '600',
   },
   subPrice: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#64748B',
-    marginTop: 2,
+    marginTop: 1.5,
     fontWeight: '500',
   },
   ctaSection: {
-    gap: 12,
+    gap: 7,
+    marginTop: 4,
   },
   ctaButton: {
     height: 52,
     borderRadius: 16,
+    backgroundColor: BLUE_ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: BLUE_ACCENT,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 14,
+    shadowRadius: 10,
     elevation: 6,
   },
   ctaRow: {
@@ -702,7 +660,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaText: {
-    color: '#090D16',
+    color: '#070B14',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
@@ -714,20 +672,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   guaranteeText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: TEXT_MUTED,
     fontWeight: '500',
   },
   legalSection: {
-    marginTop: 10,
     alignItems: 'center',
-    gap: 8,
+    gap: 3,
   },
   subscriptionDisclaimer: {
-    fontSize: 10.5,
+    fontSize: 9.5,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 15,
+    lineHeight: 13,
   },
   legalLinksRow: {
     flexDirection: 'row',
@@ -736,19 +693,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   legalLinkText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#94A3B8',
     textDecorationLine: 'underline',
     fontWeight: '500',
   },
   legalBullet: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#475569',
   },
   /* Downsell Modal Styles */
   downsellBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -756,66 +713,67 @@ const styles = StyleSheet.create({
   downsellCard: {
     width: '100%',
     backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 22,
+    padding: 22,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
+    borderColor: '#1E293B',
   },
   downsellIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(56, 189, 248, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   downsellTitle: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: 0.5,
+    marginBottom: 6,
   },
   downsellDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#94A3B8',
     textAlign: 'center',
-    lineHeight: 19,
-    marginBottom: 16,
+    lineHeight: 17,
+    marginBottom: 14,
   },
   downsellOfferBox: {
     width: '100%',
-    backgroundColor: '#1E293B',
+    backgroundColor: '#162238',
     borderRadius: 14,
-    padding: 14,
+    padding: 12,
     alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: BLUE_ACCENT,
+    marginBottom: 16,
+    position: 'relative',
   },
   downsellOfferBadge: {
-    color: BLUE_ACCENT,
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 4,
-    letterSpacing: 0.5,
+    position: 'absolute',
+    top: -9,
+    backgroundColor: BLUE_ACCENT,
+    color: '#070B14',
+    fontSize: 9,
+    fontWeight: '900',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
   },
   downsellOfferPrice: {
-    color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 4,
   },
   downsellOfferSub: {
-    color: '#94A3B8',
-    fontSize: 12,
+    fontSize: 11,
+    color: '#38BDF8',
+    fontWeight: '700',
     marginTop: 2,
   },
   downsellCtaBtn: {
@@ -828,14 +786,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   downsellCtaText: {
-    color: '#090D16',
-    fontSize: 14,
+    color: '#070B14',
+    fontSize: 13.5,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   downsellDismissBtn: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
   },
   downsellDismissText: {
     color: '#64748B',

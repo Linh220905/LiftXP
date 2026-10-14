@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type WorkoutHistoryItem } from '@/lib/effort';
 import { useI18n } from '@/lib/i18n';
+import { localDateKey } from '@/lib/units';
 
 interface ActivityHeatmapProps {
   workoutsHistory?: WorkoutHistoryItem[];
@@ -20,12 +21,13 @@ export function ActivityHeatmap({
   const activityMap = useMemo(() => {
     const map = new Map<string, number>();
     workoutsHistory.forEach((w) => {
-      const dateStr = w.date.split('T')[0];
+      const date = new Date(w.date);
+      const dateStr = localDateKey(date);
       const count =
         w.entries?.reduce(
           (acc, e) => acc + (e.sets?.filter((s) => s.done).length || 0),
           0,
-        ) || 3;
+        ) || 0;
       map.set(dateStr, (map.get(dateStr) || 0) + count);
     });
     return map;
@@ -39,7 +41,7 @@ export function ActivityHeatmap({
       for (let d = 0; d < daysPerWeek; d++) {
         const date = new Date(today);
         date.setDate(today.getDate() - (w * 7 + (6 - d)));
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = localDateKey(date);
         const count = activityMap.get(dateStr) || 0;
 
         if (count >= 10) col.push(3);

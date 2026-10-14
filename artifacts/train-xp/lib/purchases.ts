@@ -108,33 +108,24 @@ export async function fetchOfferings(): Promise<{
   const fallbackAnnual: PackageDisplay = {
     id: 'annual',
     title: 'Yearly Plan',
-    priceString: '499.000 ₫',
+    priceString: '—',
     periodText: '/ year',
-    perMonthPrice: '41.500 ₫',
-    strikePrice: '1.990.000 ₫',
-    badge: 'BEST VALUE',
-    discountPct: '75%',
-    hasTrial: true,
+    hasTrial: false,
   };
 
   const fallbackMonthly: PackageDisplay = {
     id: 'monthly',
     title: 'Monthly Plan',
-    priceString: '129.000 ₫',
+    priceString: '—',
     periodText: '/ month',
-    perMonthPrice: '129.000 ₫',
-    strikePrice: '179.000 ₫',
-    badge: 'FLEXIBLE',
     hasTrial: false,
   };
 
   const fallbackWeekly: PackageDisplay = {
     id: 'weekly',
     title: 'Weekly Plan',
-    priceString: '49.000 ₫',
+    priceString: '—',
     periodText: '/ week',
-    perMonthPrice: '196.000 ₫',
-    badge: 'TRIAL',
     hasTrial: false,
   };
 
@@ -161,11 +152,13 @@ export async function fetchOfferings(): Promise<{
             title: rcAnnual.product.title || 'Yearly Plan',
             priceString: rcAnnual.product.priceString,
             periodText: '/ year',
-            perMonthPrice: `${Math.round((rcAnnual.product.price || 499000) / 12).toLocaleString()} ₫`,
-            strikePrice: '$79.99',
+            perMonthPrice: new Intl.NumberFormat(undefined, {
+              style: 'currency',
+              currency: rcAnnual.product.currencyCode,
+            }).format(rcAnnual.product.price / 12),
             badge: 'BEST VALUE',
             discountPct: '75%',
-            hasTrial: true,
+            hasTrial: false,
           }
         : fallbackAnnual,
       monthly: rcMonthly
@@ -198,10 +191,7 @@ export async function fetchOfferings(): Promise<{
 }
 
 export async function purchaseSubscription(pkg: PackageDisplay): Promise<boolean> {
-  if (!isConfigured || !pkg.rcPackage) {
-    // In mock/sandbox mode without RevenueCat keys, grant access for testing
-    return true;
-  }
+  if (!isConfigured || !pkg.rcPackage) return false;
 
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg.rcPackage);

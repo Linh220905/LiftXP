@@ -43,7 +43,9 @@ export function getDefaultIncrement(category: string): number {
  * For single rep: 1RM = Weight
  */
 export function calculate1RM(weightKg: number, reps: number): number {
-  if (weightKg <= 0 || reps <= 0) return 0;
+  if (!Number.isFinite(weightKg) || !Number.isFinite(reps) || weightKg <= 0 || reps <= 0) return 0;
+  // Epley/Brzycki estimates are not meaningful for very high-rep sets.
+  if (reps > 36) return 0;
   if (reps === 1) return weightKg;
   if (reps > 15) {
     // Brzycki formula is safer for high reps

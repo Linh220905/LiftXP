@@ -564,6 +564,9 @@ export function DualMannequinFocusPicker({
             <Pressable
               key={area}
               onPress={() => handleToggle(area)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={locale === 'vi' ? FOCUS_LABELS[area]?.vi || area : area}
               style={({ pressed }) => [
                 styles.pill,
                 active && styles.pillActive,
@@ -636,7 +639,7 @@ const styles = StyleSheet.create({
   },
   pillActive: {
     backgroundColor: '#172236',
-    borderColor: '#22C55E',
+    borderColor: '#38BDF8',
   },
   pillText: {
     fontSize: 13,
@@ -655,7 +658,7 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   radioActive: {
-    backgroundColor: '#22C55E',
+    backgroundColor: '#38BDF8',
     borderColor: '#FFFFFF',
   },
 });

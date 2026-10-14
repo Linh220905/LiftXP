@@ -29,7 +29,7 @@ export interface UpdateLiveActivityPayload {
 
 class LiveActivityManager {
   private currentActivityId: string | null = null;
-  private isSupported: boolean = Platform.OS === 'ios';
+  private isSupported: boolean = Platform.OS === 'ios' && Boolean(NativeModules.TrainXPLiveActivity);
   private isWorkoutSessionActive: boolean = false;
   private lastPayload: WorkoutLiveActivityPayload | null = null;
 
@@ -55,7 +55,7 @@ class LiveActivityManager {
       if (nativeMod && typeof nativeMod.areActivitiesEnabled === 'function') {
         return await nativeMod.areActivitiesEnabled();
       }
-      return true;
+      return false;
     } catch {
       return false;
     }
@@ -121,8 +121,7 @@ class LiveActivityManager {
         }
       }
 
-      this.currentActivityId = 'simulated-live-activity';
-      return this.currentActivityId;
+      return null;
     } catch {
       return null;
     }
@@ -131,21 +130,19 @@ class LiveActivityManager {
   async updateActivity(payload: UpdateLiveActivityPayload): Promise<void> {
     if (!this.isSupported || !this.isWorkoutSessionActive) return;
 
-    if (this.lastPayload) {
-      this.lastPayload = {
-        ...this.lastPayload,
-        ...payload,
-      };
-    }
+    const mergedPayload = this.lastPayload ? { ...this.lastPayload, ...payload } : payload;
+    if (this.lastPayload) this.lastPayload = mergedPayload as WorkoutLiveActivityPayload;
 
     try {
       const nativeMod = this.getNativeModule();
-      const restEndTime = payload.restSeconds
+      const restEndTime = payload.isResting === false
+        ? undefined
+        : payload.restSeconds
         ? new Date(Date.now() + payload.restSeconds * 1000).toISOString()
-        : payload.restEndTime;
+        : payload.restEndTime ?? (mergedPayload as WorkoutLiveActivityPayload).restEndTime;
 
       const updateData = {
-        ...payload,
+        ...mergedPayload,
         restEndTime,
       };
 

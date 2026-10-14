@@ -1,16 +1,14 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import profileRouter from "./profile";
-import workoutsRouter from "./workouts";
-import ranksRouter from "./ranks";
-import socialRouter from "./social";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
-router.use(profileRouter);
-router.use(workoutsRouter);
-router.use(ranksRouter);
-router.use(socialRouter);
+
+// The profile/workout/social routes still use a shared demo user. Keep them
+// unreachable until the API has per-user authentication and data ownership.
+router.use((_req, res) => {
+  res.status(503).json({ error: "User API is unavailable until authentication is configured." });
+});
 
 export default router;

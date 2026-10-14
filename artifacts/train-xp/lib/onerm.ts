@@ -29,6 +29,7 @@ export function bestSetOfEntry(sets: { weight?: number | string; reps?: number |
     if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return;
 
     const est = calculate1RM(w, r);
+    if (!Number.isFinite(est) || est <= 0) return;
     if (!best || est > best.est1RM) {
       best = { est1RM: est, weight: w, reps: r };
     }

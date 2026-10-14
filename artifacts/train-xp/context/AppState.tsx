@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState as NativeAppState } from 'react-native';
 import {
   syncProfileToCloud,
   syncRoutineToCloud,
@@ -8,11 +9,17 @@ import {
   deleteWorkoutFromCloud,
   syncBodyweightLogToCloud,
   fetchCloudUserData,
+  replayCloudOutbox,
+  clearCloudOutboxForUser,
+  syncAppStateToCloud,
 } from '@/lib/supabase';
 import { type MuscleSlug } from '@/lib/muscles';
 import { type ProgressionPolicy } from '@/lib/progression';
 import { type WorkoutHistoryItem } from '@/lib/effort';
+import { calculate1RM } from '@/lib/progression';
+import { calculateInitialGamification } from '@/lib/onboardingGamification';
 import { generatePersonalizedPlan } from '@/lib/planGenerator';
+import { localDateKey } from '@/lib/units';
 import {
   initPurchases,
   checkHasProEntitlement,
@@ -21,6 +28,7 @@ import {
   logOutPurchases,
 } from '@/lib/purchases';
 import { signInWithApple, signInWithGoogle, deleteUserAccount } from '@/lib/auth';
+import { ensureUserSession, supabase } from '@/lib/supabase';
 
 export type Experience = 'Regularly' | 'Less than 1 year ago' | 'More than 1 year ago' | 'No experience';
 export type PrimaryGoal = 'Build Muscle' | 'Burn Fat' | 'Increase Endurance' | 'Weight Loss' | 'Weight Gain' | 'Optimize Workouts';
@@ -75,10 +83,15 @@ export interface Profile {
   birthMonth: string;
   birthDay: number;
   prSquat: number;
+  benchPressPR?: number;
+  deadliftPR?: number;
   goalWeight: number;
   goalWeeks: number;
   streakCommitment: number;
   notificationsEnabled: boolean;
+  username?: string;
+  referralSource?: string;
+  rating?: number;
   isPro: boolean;
   authEmail?: string;
   authProvider?: 'apple' | 'google' | null;
@@ -134,6 +147,7 @@ interface AppStateValue {
   }) => WorkoutResult;
   completeOnboarding: (profile: Profile) => void;
   resetOnboarding: () => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => void;
   setProStatus: (isPro: boolean) => void;
   loginApple: () => Promise<boolean>;
   loginGoogle: () => Promise<boolean>;
@@ -141,7 +155,8 @@ interface AppStateValue {
   deleteAccountData: () => Promise<void>;
 }
 
-const STORAGE_KEY = '@train-xp/state';
+const LEGACY_STORAGE_KEY = '@train-xp/state';
+const STORAGE_KEY_PREFIX = '@train-xp/state:';
 
 export const STARTER_ROUTINES: Routine[] = [
   {
@@ -217,89 +232,38 @@ const defaultProfile: Profile = {
   birthMonth: 'Dec',
   birthDay: 10,
   prSquat: 85,
+  benchPressPR: 60,
+  deadliftPR: 100,
   goalWeight: 75,
   goalWeeks: 4,
   streakCommitment: 30,
-  notificationsEnabled: true,
+  notificationsEnabled: false,
   isPro: false,
 };
 
 const defaultStats: PlayerStats = {
   level: 1,
-  xp: 120,
+  xp: 0,
   xpToNext: 500,
-  streak: 1,
-  workouts: 3,
-  prs: 2,
-  totalVolume: 9600,
-  muscleTrainedCount: { chest: 6, deltoids: 4, triceps: 4, 'upper-back': 4 },
+  streak: 0,
+  workouts: 0,
+  prs: 0,
+  totalVolume: 0,
+  muscleTrainedCount: {},
 };
 
-const defaultWorkoutsHistory: WorkoutHistoryItem[] = [
-  {
-    id: 'w_demo_1',
-    date: new Date(Date.now() - 4 * 86400000).toISOString(),
-    duration: '45 min',
-    volume: 3100,
-    xp: 180,
-    routineName: 'Push Day (Chest, Shoulders & Tris)',
-    entries: [
-      {
-        id: 'barbell_bench_press',
-        sets: [
-          { weight: 60, reps: 8, rir: 2, done: true },
-          { weight: 60, reps: 8, rir: 2, done: true },
-          { weight: 65, reps: 6, rir: 1, done: true },
-        ],
-      },
-      {
-        id: 'incline_barbell_bench_press',
-        sets: [
-          { weight: 50, reps: 10, rir: 2, done: true },
-          { weight: 50, reps: 10, rir: 2, done: true },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'w_demo_2',
-    date: new Date(Date.now() - 2 * 86400000).toISOString(),
-    duration: '42 min',
-    volume: 3400,
-    xp: 180,
-    routineName: 'Pull Day (Back & Biceps)',
-    entries: [
-      {
-        id: 'lat_pulldown',
-        sets: [
-          { weight: 55, reps: 10, rir: 2, done: true },
-          { weight: 55, reps: 10, rir: 2, done: true },
-          { weight: 60, reps: 8, rir: 1, done: true },
-        ],
-      },
-      {
-        id: 'barbell_bent_over_row',
-        sets: [
-          { weight: 60, reps: 8, rir: 2, done: true },
-          { weight: 65, reps: 8, rir: 1, done: true },
-        ],
-      },
-    ],
-  },
-];
-
-const defaultBodyweightLogs: BodyweightLog[] = [
-  { date: '2026-09-10', weight: 67.2, timestamp: Date.now() - 28 * 86400000 },
-  { date: '2026-09-17', weight: 67.5, timestamp: Date.now() - 21 * 86400000 },
-  { date: '2026-09-24', weight: 67.8, timestamp: Date.now() - 14 * 86400000 },
-  { date: '2026-10-01', weight: 68.0, timestamp: Date.now() - 7 * 86400000 },
-  { date: '2026-10-08', weight: 68.4, timestamp: Date.now() },
-];
+const defaultWorkoutsHistory: WorkoutHistoryItem[] = [];
+const defaultBodyweightLogs: BodyweightLog[] = [];
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const storageKeyRef = useRef(LEGACY_STORAGE_KEY);
+  const identityVersionRef = useRef(0);
+  const purchasesListenerCleanupRef = useRef<(() => void) | null>(null);
+  const activeUserIdRef = useRef<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [cloudSnapshotReady, setCloudSnapshotReady] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(false);
   const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [stats, setStats] = useState<PlayerStats>(defaultStats);
@@ -309,80 +273,151 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [bodyweightLogs, setBodyweightLogs] = useState<BodyweightLog[]>(defaultBodyweightLogs);
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistoryItem[]>(defaultWorkoutsHistory);
 
+  const activateStorageForUser = async (
+    userId: string,
+    migrateLegacy: boolean,
+    guestSnapshot?: Partial<AppStateValue>,
+  ) => {
+    const version = ++identityVersionRef.current;
+    setHydrated(false);
+    setCloudSnapshotReady(false);
+    const key = `${STORAGE_KEY_PREFIX}${userId}`;
+    activeUserIdRef.current = userId;
+    storageKeyRef.current = key;
+    // Remove the previous identity's data immediately while the next cache/cloud
+    // snapshot is loading, so account switching cannot briefly reveal old history.
+    setHasOnboarded(false);
+    setProfile({ ...defaultProfile, authUserId: userId });
+    setStats(defaultStats);
+    setLastWorkout(null);
+    setRoutines(STARTER_ROUTINES);
+    setWeekSchedule(defaultWeekSchedule);
+    setBodyweightLogs(defaultBodyweightLogs);
+    setWorkoutsHistory(defaultWorkoutsHistory);
+
+    let localValue: string | null = null;
+    try {
+      localValue = await AsyncStorage.getItem(key);
+      if (!localValue && migrateLegacy) {
+        localValue = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        if (localValue) await AsyncStorage.setItem(key, localValue);
+      }
+    } catch {
+      // The account can still load from cloud if local storage is unavailable.
+    }
+    void replayCloudOutbox(userId);
+    const cloud = await Promise.race([
+      fetchCloudUserData(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+    ]);
+    if (version !== identityVersionRef.current) return;
+    setCloudSnapshotReady(Boolean(cloud));
+
+    if (localValue) {
+      try {
+        const saved = JSON.parse(localValue) as Partial<AppStateValue>;
+        setHasOnboarded(Boolean(saved.hasOnboarded));
+        setProfile({ ...defaultProfile, ...(saved.profile ?? {}), authUserId: userId });
+        setStats({ ...defaultStats, ...(saved.stats ?? {}) });
+        setLastWorkout(saved.lastWorkout ?? null);
+        if (Array.isArray(saved.routines)) setRoutines(saved.routines);
+        if (saved.weekSchedule) setWeekSchedule(saved.weekSchedule);
+        if (Array.isArray(saved.bodyweightLogs)) setBodyweightLogs(saved.bodyweightLogs);
+        if (Array.isArray(saved.workoutsHistory)) setWorkoutsHistory(saved.workoutsHistory);
+      } catch {
+        // Ignore malformed local cache and continue with cloud/default data.
+      }
+    }
+    const remoteHasData = Boolean(cloud && (
+      cloud.appState || cloud.profile || cloud.routines?.length || cloud.workouts?.length || cloud.bodyweightLogs?.length
+    ));
+    if (guestSnapshot && cloud && !localValue && !remoteHasData && version === identityVersionRef.current) {
+      setHasOnboarded(Boolean(guestSnapshot.hasOnboarded));
+      setProfile({ ...defaultProfile, ...(guestSnapshot.profile ?? {}), authUserId: userId });
+      setStats({ ...defaultStats, ...(guestSnapshot.stats ?? {}) });
+      setLastWorkout(guestSnapshot.lastWorkout ?? null);
+      setRoutines(guestSnapshot.routines ?? STARTER_ROUTINES);
+      setWeekSchedule(guestSnapshot.weekSchedule ?? defaultWeekSchedule);
+      setBodyweightLogs(guestSnapshot.bodyweightLogs ?? []);
+      setWorkoutsHistory(guestSnapshot.workoutsHistory ?? []);
+    } else if (cloud?.appState && version === identityVersionRef.current) {
+      const saved = cloud.appState as Partial<AppStateValue>;
+      setHasOnboarded(Boolean(saved.hasOnboarded));
+      setProfile({ ...defaultProfile, ...(saved.profile ?? {}), authUserId: userId });
+      setStats({ ...defaultStats, ...(saved.stats ?? {}) });
+      setLastWorkout(saved.lastWorkout ?? null);
+      setRoutines(saved.routines ?? STARTER_ROUTINES);
+      setWeekSchedule(saved.weekSchedule ?? defaultWeekSchedule);
+      setBodyweightLogs(saved.bodyweightLogs ?? []);
+      setWorkoutsHistory(saved.workoutsHistory ?? []);
+    } else if (cloud && version === identityVersionRef.current) {
+      if (cloud.profile) {
+        setHasOnboarded(true);
+        setProfile((p) => ({ ...p, ...cloud.profile, authUserId: userId }));
+      }
+      if (cloud.stats) setStats((s) => ({ ...s, ...cloud.stats }));
+      if (cloud.weekSchedule) setWeekSchedule(cloud.weekSchedule);
+      if (cloud.routines) setRoutines(cloud.routines);
+      if (cloud.workouts) setWorkoutsHistory(cloud.workouts);
+      if (cloud.bodyweightLogs) setBodyweightLogs(cloud.bodyweightLogs);
+    }
+    setHydrated(true);
+  };
+
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        if (value) {
-          const saved = JSON.parse(value) as Partial<AppStateValue>;
-          setHasOnboarded(Boolean(saved.hasOnboarded));
-          setProfile({ ...defaultProfile, ...(saved.profile ?? {}) });
-          setStats({ ...defaultStats, ...(saved.stats ?? {}) });
-          setLastWorkout(saved.lastWorkout ?? null);
-          if (saved.routines && Array.isArray(saved.routines) && saved.routines.length > 0) {
-            setRoutines(saved.routines);
-          }
-          if (saved.weekSchedule) {
-            setWeekSchedule(saved.weekSchedule);
-          }
-          if (saved.bodyweightLogs && saved.bodyweightLogs.length > 0) {
-            setBodyweightLogs(saved.bodyweightLogs);
-          }
-          if (saved.workoutsHistory && saved.workoutsHistory.length > 0) {
-            setWorkoutsHistory(saved.workoutsHistory);
-          }
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        setHydrated(true);
+    let cancelled = false;
+    void (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      let activeUserId = sessionData.session?.user.id;
+      let isAnonymous = Boolean(sessionData.session?.user.is_anonymous);
+      if (!activeUserId) {
+        activeUserId = await ensureUserSession() ?? undefined;
+        const { data } = await supabase.auth.getUser();
+        isAnonymous = data.user?.is_anonymous ?? true;
+      }
+      if (!cancelled && activeUserId) await activateStorageForUser(activeUserId, isAnonymous);
+      else if (!cancelled) setHydrated(true);
 
-        // Fetch latest cloud data in background
-        void fetchCloudUserData().then((cloud) => {
-          if (cloud) {
-            if (cloud.profile) setProfile((p) => ({ ...p, ...cloud.profile }));
-            if (cloud.stats) setStats((s) => ({ ...s, ...cloud.stats }));
-            if (cloud.weekSchedule) setWeekSchedule(cloud.weekSchedule);
-            if (cloud.routines && cloud.routines.length > 0) setRoutines(cloud.routines);
-            if (cloud.workouts && cloud.workouts.length > 0) setWorkoutsHistory(cloud.workouts);
-            if (cloud.bodyweightLogs && cloud.bodyweightLogs.length > 0) setBodyweightLogs(cloud.bodyweightLogs);
-          }
-        });
-
-        void initPurchases().then(async (ready) => {
-          if (ready) {
-            const hasPro = await checkHasProEntitlement();
-            if (hasPro) setProfile((p) => ({ ...p, isPro: true }));
-
-            // Real-time listener: unlocks immediately when purchase or renewal occurs
-            setupPurchasesListener((isPro) => {
-              setProfile((prev) => {
-                if (prev.isPro === isPro) return prev;
-                const next = { ...prev, isPro };
-                void syncProfileToCloud(next, stats, weekSchedule);
-                return next;
-              });
-            });
-          }
-        });
-      });
+      const ready = await initPurchases();
+      if (cancelled || !ready) return;
+      const hasPro = await checkHasProEntitlement();
+      setProfile((p) => p.isPro === hasPro ? p : { ...p, isPro: hasPro });
+      purchasesListenerCleanupRef.current = setupPurchasesListener((isPro) =>
+        setProfile((prev) => prev.isPro === isPro ? prev : { ...prev, isPro }),
+      );
+    })();
+    const appStateSubscription = NativeAppState.addEventListener('change', (state) => {
+      if (state === 'active' && activeUserIdRef.current) {
+        void replayCloudOutbox(activeUserIdRef.current);
+      }
+    });
+    return () => {
+      cancelled = true;
+      identityVersionRef.current += 1;
+      appStateSubscription.remove();
+      purchasesListenerCleanupRef.current?.();
+      purchasesListenerCleanupRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
+    const appSnapshot = {
+      hasOnboarded,
+      profile,
+      stats,
+      lastWorkout,
+      routines,
+      weekSchedule,
+      bodyweightLogs,
+      workoutsHistory,
+    };
     void AsyncStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        hasOnboarded,
-        profile,
-        stats,
-        lastWorkout,
-        routines,
-        weekSchedule,
-        bodyweightLogs,
-        workoutsHistory,
-      }),
+      storageKeyRef.current,
+      JSON.stringify(appSnapshot),
     );
-  }, [hydrated, hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory]);
+    if (cloudSnapshotReady) void syncAppStateToCloud(appSnapshot);
+  }, [hydrated, cloudSnapshotReady, hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory]);
 
   const addRoutine = (newRoutine: Omit<Routine, 'id'>): Routine => {
     const routine: Routine = {
@@ -432,6 +467,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const loadStarterPlan = (customProfile?: Profile) => {
     const targetProf = customProfile || profile;
     const gen = generatePersonalizedPlan(targetProf);
+    const nextIds = new Set(gen.routines.map((routine) => routine.id));
+    routines.filter((routine) => !nextIds.has(routine.id)).forEach((routine) => {
+      void deleteRoutineFromCloud(routine.id);
+    });
     setRoutines(gen.routines);
     setWeekSchedule(gen.weekSchedule);
     gen.routines.forEach((r) => void syncRoutineToCloud(r));
@@ -439,7 +478,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logBodyweight = (w: number) => {
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = localDateKey();
     const newLog: BodyweightLog = {
       date: dateStr,
       weight: w,
@@ -458,12 +497,34 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setProfile(nextProfile);
     setHasOnboarded(true);
 
-    // Sync onboarding Level 14 (+91,000 XP) achievement
+    // Initial starting log for bodyweight trend chart
+    if (nextProfile.weight && nextProfile.weight >= 15) {
+      const initialLog: BodyweightLog = {
+        date: localDateKey(),
+        weight: nextProfile.weight,
+        timestamp: Date.now(),
+      };
+      setBodyweightLogs([initialLog]);
+      void syncBodyweightLogToCloud(initialLog);
+    }
+
+    // Compute starting RPG Level, total XP and initial trophies from benchmark PRs
+    const gamification = calculateInitialGamification({
+      benchKg: nextProfile.benchPressPR,
+      squatKg: nextProfile.prSquat,
+      deadliftKg: nextProfile.deadliftPR,
+      bodyweightKg: nextProfile.weight,
+      unit: nextProfile.unit,
+    });
+
+    const prCount = [nextProfile.prSquat, nextProfile.benchPressPR, nextProfile.deadliftPR].filter((v) => Number(v) > 0).length;
+
     const onboardStats: PlayerStats = {
       ...stats,
-      level: 14,
-      xp: 91000,
-      xpToNext: 100000,
+      level: gamification.endLevel,
+      xp: gamification.totalExp,
+      xpToNext: gamification.xpNeededForNext,
+      prs: prCount > 0 ? prCount : stats.prs,
     };
     setStats(onboardStats);
 
@@ -479,9 +540,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const resetOnboarding = async () => {
     setHasOnboarded(false);
     await AsyncStorage.setItem(
-      STORAGE_KEY,
+      storageKeyRef.current,
       JSON.stringify({ hasOnboarded: false, profile, stats, lastWorkout, routines, weekSchedule }),
     );
+  };
+
+  const updateProfile = (updates: Partial<Profile>) => {
+    setProfile((prev) => {
+      const next = { ...prev, ...updates };
+      void syncProfileToCloud(next, stats, weekSchedule);
+      return next;
+    });
   };
 
   const setProStatus = (isPro: boolean) => {
@@ -494,8 +563,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const loginApple = async (): Promise<boolean> => {
     try {
+      const guestSnapshot = { hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory };
       const user = await signInWithApple();
       if (!user) return false;
+      await activateStorageForUser(user.id, false, guestSnapshot);
       void syncPurchasesUser(user.id);
       setProfile((prev) => {
         const next = {
@@ -517,8 +588,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const loginGoogle = async (): Promise<boolean> => {
     try {
+      const guestSnapshot = { hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory };
       const user = await signInWithGoogle();
       if (!user) return false;
+      await activateStorageForUser(user.id, false, guestSnapshot);
       void syncPurchasesUser(user.id);
       setProfile((prev) => {
         const next = {
@@ -539,19 +612,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logoutAuth = async () => {
-    void logOutPurchases();
-    setProfile((prev) => ({
-      ...prev,
-      authEmail: undefined,
-      authProvider: null,
-      authUserId: undefined,
-    }));
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    await logOutPurchases();
+    const anonymousId = await ensureUserSession();
+    if (anonymousId) await activateStorageForUser(anonymousId, false);
+    setProfile((prev) => ({ ...prev, authEmail: undefined, authProvider: null }));
   };
 
   const deleteAccountData = async () => {
-    const currentId = profile.authUserId;
-    await deleteUserAccount(currentId);
-    await AsyncStorage.clear();
+    const currentStorageKey = storageKeyRef.current;
+    const userId = profile.authUserId;
+    await deleteUserAccount();
+    if (userId) await clearCloudOutboxForUser(userId);
+    await AsyncStorage.removeItem(currentStorageKey);
+    if (userId) await AsyncStorage.removeItem(`@train-xp/workout-draft:${userId}`);
+    storageKeyRef.current = LEGACY_STORAGE_KEY;
+    await logOutPurchases();
     setHasOnboarded(false);
     setProfile(defaultProfile);
     setStats(defaultStats);
@@ -559,10 +636,47 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setWeekSchedule(defaultWeekSchedule);
     setBodyweightLogs(defaultBodyweightLogs);
     setWorkoutsHistory(defaultWorkoutsHistory);
+    setLastWorkout(null);
+    setProfile(defaultProfile);
+    setHydrated(true);
+    setCloudSnapshotReady(false);
   };
 
   const deleteWorkout = (id: string) => {
-    setWorkoutsHistory((prev) => prev.filter((w) => w.id !== id));
+    const remaining = workoutsHistory.filter((workout) => workout.id !== id);
+    setWorkoutsHistory(remaining);
+    const bestByExercise = new Map<string, number>();
+    let personalRecords = 0;
+    [...remaining].reverse().forEach((workout) => {
+      let setNewRecord = false;
+      workout.entries.forEach((entry) => {
+        const workoutBest = Math.max(0, ...entry.sets.filter((set) => set.done)
+          .map((set) => calculate1RM(Number(set.weight), Number(set.reps))));
+        const previousBest = bestByExercise.get(entry.id) ?? 0;
+        if (workoutBest > previousBest) setNewRecord = true;
+        if (workoutBest > previousBest) bestByExercise.set(entry.id, workoutBest);
+      });
+      if (setNewRecord) personalRecords++;
+    });
+    const distinctDays = [...new Set(remaining.map((workout) => localDateKey(new Date(workout.date))))];
+    let streak = 0;
+    if (distinctDays.length) {
+      const latest = new Date(`${distinctDays[0]}T12:00:00`);
+      for (const key of distinctDays) {
+        const date = new Date(`${key}T12:00:00`);
+        const expected = new Date(latest);
+        expected.setDate(expected.getDate() - streak);
+        if (localDateKey(date) !== localDateKey(expected)) break;
+        streak++;
+      }
+    }
+    setStats((current) => ({
+      ...current,
+      workouts: remaining.length,
+      prs: personalRecords,
+      streak,
+      totalVolume: remaining.reduce((total, workout) => total + (Number(workout.volume) || 0), 0),
+    }));
     void deleteWorkoutFromCloud(id);
   };
 
@@ -582,13 +696,35 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const setCount = customMetrics?.sets !== undefined ? customMetrics.sets : 0;
     const duration = customMetrics?.duration || '00:00';
 
+    const previousBestByExercise = new Map<string, number>();
+    workoutsHistory.forEach((workout) => {
+      workout.entries?.forEach((entry) => {
+        entry.sets?.forEach((set) => {
+          if (!set.done) return;
+          const weight = Number(set.weight);
+          const reps = Number(set.reps);
+          const estimated = calculate1RM(weight, reps);
+          if (estimated > (previousBestByExercise.get(entry.id) ?? 0)) {
+            previousBestByExercise.set(entry.id, estimated);
+          }
+        });
+      });
+    });
+    let newPr = false;
+    customMetrics?.entries?.forEach((entry) => {
+      const previousBest = previousBestByExercise.get(entry.id) ?? 0;
+      const nextBest = Math.max(0, ...entry.sets.filter((set) => set.done)
+        .map((set) => calculate1RM(Number(set.weight), Number(set.reps))));
+      if (nextBest > previousBest) newPr = true;
+    });
+
     const result: WorkoutResult = {
       xp: xpGain,
       duration,
       exercises: exCount,
       sets: setCount,
       volume: vol,
-      newPr: true,
+      newPr,
       rankedUp,
     };
 
@@ -625,9 +761,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         level: rankedUp ? current.level + 1 : current.level,
         xp: rankedUp ? current.xp + xpGain - current.xpToNext : current.xp + xpGain,
         xpToNext: rankedUp ? current.xpToNext + 250 : current.xpToNext,
-        streak: current.streak + 1,
+        streak: (() => {
+          const today = new Date();
+          const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+          const last = workoutsHistory[0]?.date ? new Date(workoutsHistory[0].date) : null;
+          if (!last || Number.isNaN(last.getTime())) return 1;
+          const lastKey = `${last.getFullYear()}-${last.getMonth()}-${last.getDate()}`;
+          if (lastKey === todayKey) return current.streak;
+          const todayStart = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+          const lastStart = Date.UTC(last.getFullYear(), last.getMonth(), last.getDate());
+          return todayStart - lastStart === 86400000 ? current.streak + 1 : 1;
+        })(),
         workouts: current.workouts + 1,
-        prs: current.prs + 1,
+        prs: current.prs + (newPr ? 1 : 0),
         totalVolume: current.totalVolume + result.volume,
         muscleTrainedCount: nextMuscleCounts,
       };
@@ -663,6 +809,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       finishWorkout,
       completeOnboarding,
       resetOnboarding,
+      updateProfile,
       setProStatus,
       loginApple,
       loginGoogle,

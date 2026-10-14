@@ -1,38 +1,61 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProgressBar } from '@/components/ProgressBar';
-import { DualMannequinFocusPicker } from '@/components/DualMannequinFocusPicker';
+import { DualMannequinFocusPicker, type FocusArea } from '@/components/DualMannequinFocusPicker';
 import { useAppState } from '@/context/AppState';
 import { useColors } from '@/hooks/useColors';
 import { useI18n } from '@/lib/i18n';
+import { displayWeightToKg, formatWeight, localDateKey, weightUnitLabel } from '@/lib/units';
 
 const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { stats, profile, routines, weekSchedule, logBodyweight } = useAppState();
+  const { stats, profile, routines, weekSchedule, workoutsHistory, logBodyweight, updateProfile } = useAppState();
   const { t, locale } = useI18n();
   const progress = Math.min(1, stats.xp / stats.xpToNext);
 
   // Weight Log Modal State
   const [showWeightModal, setShowWeightModal] = useState(false);
-  const [newWeightInput, setNewWeightInput] = useState(String(profile.weight || 68));
+  const [newWeightInput, setNewWeightInput] = useState(formatWeight(profile.weight || 68, profile.unit, 1));
 
   // Today Routine
   const todayIdx = new Date().getDay();
   const todayRoutineId = weekSchedule[todayIdx];
   const todayRoutine = routines.find((r) => r.id === todayRoutineId);
 
-  const handleSaveWeight = () => {
-    const val = parseFloat(newWeightInput);
-    if (!isNaN(val) && val > 30 && val < 250) {
-      logBodyweight(val);
+  const handleToggleMuscle = (area: FocusArea) => {
+    const current = profile.targetMuscles && profile.targetMuscles.length > 0
+      ? profile.targetMuscles
+      : [];
+
+    let updated: string[];
+    if (area === 'Full body') {
+      updated = current.includes('Full body') ? [] : ['Full body'];
+    } else {
+      const filtered = current.filter((a) => a !== 'Full body');
+      if (filtered.includes(area)) {
+        updated = filtered.filter((a) => a !== area);
+      } else {
+        updated = [...filtered, area];
+      }
     }
-    setShowWeightModal(false);
+    updateProfile({ targetMuscles: updated });
+  };
+
+  const handleSaveWeight = () => {
+    const val = Number(newWeightInput.trim().replace(',', '.'));
+    const kg = displayWeightToKg(val, profile.unit);
+    if (Number.isFinite(kg) && kg >= 15 && kg <= 300) {
+      logBodyweight(kg);
+      setShowWeightModal(false);
+      return;
+    }
+    Alert.alert(locale === 'vi' ? 'Cân nặng không hợp lệ' : 'Invalid weight', locale === 'vi' ? 'Nhập cân nặng từ 15 đến 300 kg.' : 'Enter a weight between 15 and 300 kg.');
   };
 
   // 7-day strip calculation for current week
@@ -48,7 +71,8 @@ export default function HomeScreen() {
       const isToday = idx === currentDayIdx;
       const actualDayOfWeek = (idx + 1) % 7; // 1=Mon...6=Sat, 0=Sun
       const isPlanned = weekSchedule[actualDayOfWeek] !== null;
-      const isDone = idx < currentDayIdx || (isToday && stats.workouts > 0);
+      const dateKey = localDateKey(d);
+      const isDone = workoutsHistory.some((workout) => localDateKey(new Date(workout.date)) === dateKey);
       return {
         name: dayName,
         date: d.getDate(),
@@ -57,7 +81,21 @@ export default function HomeScreen() {
         isPlanned,
       };
     });
-  }, [stats.workouts, weekSchedule]);
+  }, [workoutsHistory, weekSchedule]);
+
+  const kickerText = useMemo(() => {
+    switch (profile.thinkAboutFitness) {
+      case 'All The Time':
+        return locale === 'vi' ? 'KỶ LUẬT THÉP • KHÔNG THỎA HIỆP' : 'IRON DISCIPLINE • UNCOMPROMISING';
+      case 'Often':
+        return locale === 'vi' ? 'TRUNG TÂM HUẤN LUYỆN • BỨT PHÁ GIỚI HẠN' : 'TRAINING HUB • BREAKING LIMITS';
+      case 'Sometimes':
+      case 'Never':
+        return locale === 'vi' ? 'HÀNH TRÌNH TỪNG BƯỚC • BẮT ĐẦU NGAY' : 'STEP BY STEP • START NOW';
+      default:
+        return t.home.trainingHub;
+    }
+  }, [profile.thinkAboutFitness, locale, t.home.trainingHub]);
 
   return (
     <View style={[styles.screen, { backgroundColor: '#080C14' }]}>
@@ -71,7 +109,7 @@ export default function HomeScreen() {
         {/* HEADER */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.kicker}>{t.home.trainingHub}</Text>
+            <Text style={styles.kicker}>{kickerText}</Text>
             <Text style={styles.greeting}>{t.home.readyPrompt} {profile.name || 'Lifter'}?</Text>
           </View>
           <View style={styles.avatar}>
@@ -84,9 +122,16 @@ export default function HomeScreen() {
         {/* 7-DAY SCHEDULE STRIP */}
         <Pressable onPress={() => router.push('/(tabs)/plan')} style={styles.weekCard}>
           <View style={styles.weekHeader}>
-            <Text style={styles.weekTitle}>{t.plan.weeklySchedule}</Text>
+            <View>
+              <Text style={styles.weekTitle}>{t.plan.weeklySchedule}</Text>
+              <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium' }}>
+                {locale === 'vi' ? `Mục tiêu: ${profile.daysPerWeek || 3} buổi/tuần` : `Goal: ${profile.daysPerWeek || 3} days/wk`}
+              </Text>
+            </View>
             <Text style={styles.weekSub} numberOfLines={1}>
-              {locale === 'vi' ? `Chuỗi ${stats.streak} ngày` : `${stats.streak}d Streak`}
+              {locale === 'vi'
+                ? `Chuỗi ${stats.streak}/${profile.streakCommitment || 30} ngày`
+                : `${stats.streak}/${profile.streakCommitment || 30}d Streak`}
             </Text>
           </View>
           <View style={styles.weekRow}>
@@ -148,7 +193,9 @@ export default function HomeScreen() {
               {todayRoutine?.name || t.workout.freestyleTitle}
             </Text>
             <Text style={styles.questSub} numberOfLines={1}>
-              {todayRoutine ? `${todayRoutine.exercises.length} bài tập` : t.workout.freestyleDesc}
+              {todayRoutine
+                ? `${todayRoutine.exercises.length} ${locale === 'vi' ? 'bài tập' : 'exercises'} • ~${profile.workoutDuration || '60 mins'}`
+                : t.workout.freestyleDesc}
             </Text>
           </View>
           <Text style={styles.questXp}>+180 XP</Text>
@@ -172,7 +219,10 @@ export default function HomeScreen() {
           <View style={styles.cardTopRow}>
             <Text style={styles.cardTitle}>{t.home.logBodyWeight}</Text>
             <Pressable
-              onPress={() => setShowWeightModal(true)}
+              onPress={() => {
+                setNewWeightInput(formatWeight(profile.weight || 68, profile.unit, 1));
+                setShowWeightModal(true);
+              }}
               style={styles.logBtn}
             >
               <Feather name="plus" size={14} color="#38BDF8" />
@@ -182,8 +232,11 @@ export default function HomeScreen() {
 
           <View style={styles.weightDataRow}>
             <View>
-              <Text style={styles.weightValue}>{profile.weight || 68} <Text style={styles.weightUnit}>kg</Text></Text>
-              <Text style={styles.weightMeta}>{t.stats.goalLine}: {profile.goalWeight || 75} kg</Text>
+              <Text style={styles.weightValue}>{formatWeight(profile.weight || 68, profile.unit, 1)} <Text style={styles.weightUnit}>{weightUnitLabel(profile.unit)}</Text></Text>
+              <Text style={styles.weightMeta}>
+                {t.stats.goalLine}: {formatWeight(profile.goalWeight || 75, profile.unit, 1)} {weightUnitLabel(profile.unit)}
+                {profile.goalWeeks ? ` (${profile.goalWeeks} ${locale === 'vi' ? 'tuần' : 'wks'})` : ''}
+              </Text>
             </View>
             <Pressable onPress={() => router.push('/(tabs)/stats')} style={styles.statsLink}>
               <Text style={styles.statsLinkText}>{t.workout.viewAnalytics}</Text>
@@ -195,16 +248,21 @@ export default function HomeScreen() {
         {/* DUAL MANNEQUIN FOCUS PICKER */}
         <View style={styles.mannequinCard}>
           <View style={styles.mannequinHead}>
-            <Text style={styles.mannequinTitle}>{t.home.recoveryStatus}</Text>
+            <View>
+              <Text style={styles.mannequinTitle}>{t.home.activeTargetMap}</Text>
+              <Text style={styles.mannequinSubtitle}>
+                {locale === 'vi' ? 'Chạm để chọn các nhóm cơ ưu tiên phát triển' : 'Tap to select priority target muscle groups'}
+              </Text>
+            </View>
             <View style={styles.focusBadge}>
-              <Text style={styles.focusBadgeText}>ACTIVE</Text>
+              <Text style={styles.focusBadgeText}>TARGET</Text>
             </View>
           </View>
 
           <View style={{ alignItems: 'center', marginVertical: 10 }}>
             <DualMannequinFocusPicker
               selectedAreas={profile.targetMuscles || ['Full chest', 'Big arms', 'Broad shoulders']}
-              onToggleArea={() => {}}
+              onToggleArea={handleToggleMuscle}
             />
           </View>
         </View>
@@ -226,7 +284,7 @@ export default function HomeScreen() {
                 style={styles.weightTextInput}
                 autoFocus
               />
-              <Text style={styles.weightInputUnit}>kg</Text>
+              <Text style={styles.weightInputUnit}>{weightUnitLabel(profile.unit)}</Text>
             </View>
 
             <View style={styles.modalActions}>
@@ -405,6 +463,7 @@ const styles = StyleSheet.create({
   },
   mannequinHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   mannequinTitle: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  mannequinSubtitle: { color: '#94A3B8', fontSize: 11, marginTop: 2, fontWeight: '500' },
   focusBadge: { backgroundColor: '#14233D', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 },
   focusBadgeText: { color: '#38BDF8', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.75)' },

@@ -206,8 +206,12 @@ export interface TranslationDictionary {
     // Muscle Targets
     workoutMuscles: Record<string, string>;
 
+    // Fallback Warrior Name
+    defaultWarriorName: string;
+
     // Step 0
     nameTitle: string;
+    nameSubtitle: string;
     namePlaceholder: string;
 
     // Step 1
@@ -275,7 +279,24 @@ export interface TranslationDictionary {
     freqIncredible: string;
     freqOutstanding: string;
 
+    // Alerts & Validation
+    nameRequiredTitle: string;
+    nameRequiredMsg: string;
+    invalidWeightTitle: string;
+    invalidWeightMsg: string;
+    invalidHeightTitle: string;
+    invalidHeightMsg: string;
+    signInFailedTitle: string;
+    signInFailedMsg: string;
+
     // Step 12
+    goalAndExpTitle: string;
+    goalAndExpSub: string;
+    trainingGoalLabel: string;
+    trainingExpLabel: string;
+    genderLabel: string;
+    genderMale: string;
+    genderFemale: string;
     relateTitle: string;
     relateQuote: string;
     yes: string;
@@ -283,12 +304,17 @@ export interface TranslationDictionary {
 
     // Step 13
     trackProgressTitle: string;
+    aiFitnessAnalysisBadge: string;
+    trackProgressSub: string;
     muscleBalanceProfile: string;
     optimalTrainingSplit: string;
     balancedScore: string;
     trackBenefit1: string;
     trackBenefit2: string;
     trackBenefit3: string;
+    trackBenefitSymmetryDesc: string;
+    trackBenefitOverloadDesc: string;
+    trackBenefitSafetyDesc: string;
 
     // Step 14
     prSquatTitle: string;
@@ -297,6 +323,10 @@ export interface TranslationDictionary {
     // Step 15
     trophyUnlockedTag: string;
     trophyUnlockedTitle: string;
+    trophyUnlockedSub: string;
+    trophyTierBronze1: string;
+    trophyActivatedBadge: string;
+    trophyTopPercentileBadge: string;
     trophyBenchName: string;
     trophyBenchDesc: string;
 
@@ -308,9 +338,14 @@ export interface TranslationDictionary {
     trophyDeadliftMax: string;
     trophySquatMax: string;
     trophyAllStarMax: string;
+    trophyAllStarBeast: string;
 
     // Step 17
+    aiPredictionBadge: string;
     predictSilverTitle: string;
+    trajectoryStrengthLabel: string;
+    trajectoryDurationLabel: string;
+    trajectoryGrowthLabel: string;
     todayLabel: string;
     dec28Label: string;
     youAreIncredible: string;
@@ -325,6 +360,10 @@ export interface TranslationDictionary {
     speedGoalHeader: string;
     speedGoalDesc: string;
     weeksLabel: string;
+    speedFast: string;
+    speedRecommended: string;
+    speedSustainable: string;
+    speedSlow: string;
 
     // Step 20
     levelUpTag: string;
@@ -332,11 +371,15 @@ export interface TranslationDictionary {
     levelUpSubtitle: string;
     levelProgress: string;
 
-    // Step 21
+    // Routine Preparation
     preparingRoutine: string;
     completedPct: string;
+    analyzingMuscles: string;
+    calculatingOverload: string;
+    finalizingPlan: string;
+    sessionsPerWeekTag: string;
 
-    // Step 22
+    // Routine Overview
     routineOverviewTitle: string;
     routineOverviewDesc: string;
     weeklyGoalLabel: string;
@@ -348,20 +391,24 @@ export interface TranslationDictionary {
     pushWorkoutSub: string;
     pullWorkoutSub: string;
     legsWorkoutSub: string;
+    dayLetterFmt: string;
+    exercisesCount: string;
 
-    // Step 23
+    // Streak Start
+    disciplineStreakBadge: string;
     streakStartTitle: string;
     streakStartHighlight: string;
     streakStartSubtitle: string;
+    streakXpBonusText: string;
     streakHint: string;
 
-    // Step 24
+    // Commit to Workout
     commitWorkoutTitle: string;
     commitWorkoutSubtitle: string;
     dayStreakFmt: string;
     moreLikelyGoal: string;
 
-    // Step 25
+    // Notifications (Legacy)
     enableNotifTitle: string;
     enableNotifSubtitle: string;
     notifRestTitle: string;
@@ -369,7 +416,7 @@ export interface TranslationDictionary {
     notifStreakTitle: string;
     notifStreakBody: string;
 
-    // Step 26
+    // Social Proof (Legacy)
     trustedUsersTitle: string;
     trustedUsersHighlight: string;
     ratingsCount: string;
@@ -380,13 +427,67 @@ export interface TranslationDictionary {
     testimonialBody: string;
     testimonialAuthor: string;
 
-    // Step 27
+    // Biometric Pledge
+    commitmentPledgeBadge: string;
+    pledgeTitleFmt: string;
+    pledgeSub: string;
+    pledgeItemStreak: string;
+    pledgeItemOverload: string;
+    pledgeItemHonor: string;
+    scanningCommitStatus: string;
+    touchAndHoldCommit: string;
+    holdWaveExpandsSub: string;
     pledgeTitle: string;
     pledgeBody: string;
     tapAndHoldCommit: string;
 
-    // Step 28
+    // You Are Ready
     youAreReady: string;
+    youAreReadySub: string;
+    readyRoutineGenerated: string;
+    readyStreakPledged: string;
+    readyRanksArmed: string;
+
+    // Arrow Dissected Onboarding Extensions
+    valueProp1Title: string;
+    valueProp1Sub: string;
+    valueProp2Title: string;
+    valueProp2Sub: string;
+    valueProp3Title: string;
+    valueProp3Sub: string;
+    genderTitle: string;
+    genderSubtitle: string;
+    dobTitle: string;
+    dobSubtitle: string;
+    yearLabel: string;
+    monthLabel: string;
+    dayLabel: string;
+    fitnessLevelTitle: string;
+    fitnessLevelSubtitle: string;
+    benchPrTitle: string;
+    benchPrSubtitle: string;
+    deadliftPrTitle: string;
+    deadliftPrSubtitle: string;
+    prHelpText: string;
+    levelJourneyTitle: string;
+    levelJourneySubtitle: string;
+    levelJourneyCurrent: string;
+    levelJourneyNext: string;
+    multiplierReadout: string;
+    notifPermissionTitle: string;
+    notifPermissionSub: string;
+    maybeLater: string;
+    referralTitle: string;
+    referralOptions: Record<string, string>;
+    ratingTitle: string;
+    ratingSub: string;
+    saveProgressTitle: string;
+    saveProgressSub: string;
+    signInApple: string;
+    signInGoogle: string;
+    usernameTitle: string;
+    usernameSubtitle: string;
+    usernamePlaceholder: string;
   };
 
   // Paywall Modal

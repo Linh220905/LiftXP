@@ -31,6 +31,8 @@ import { getExercise1RmSeries, getExerciseBest1RM } from '@/lib/onerm';
 import { loadOf, rankOf, MUSCLE_NAMES, type MuscleSlug } from '@/lib/muscles';
 import { useI18n } from '@/lib/i18n';
 import { ActivityHeatmap } from '@/components/ActivityHeatmap';
+import { displayWeightToKg, formatWeight, localDateKey, weightUnitLabel } from '@/lib/units';
+import { isHardSet } from '@/lib/effort';
 
 import EXERCISES_DATA from '../../../../data/exercises_supabase_seed.json';
 
@@ -299,8 +301,9 @@ export default function StatsScreen() {
   const [effortWin, setEffortWin] = useState<30 | 90 | 365 | 0>(30);
   const [curExId, setCurExId] = useState<string>('barbell_bench_press');
   const [exPickerOpen, setExPickerOpen] = useState(false);
+  const [exerciseSearch, setExerciseSearch] = useState('');
   const [bwModalOpen, setBwModalOpen] = useState(false);
-  const [bwInput, setBwInput] = useState(String(profile.weight || 70));
+  const [bwInput, setBwInput] = useState(formatWeight(profile.weight || 70, profile.unit, 1));
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutHistoryItem | null>(null);
 
   const handleDeleteWorkout = (id: string) => {
@@ -340,12 +343,16 @@ export default function StatsScreen() {
   }, [workoutsHistory]);
 
   const bwDelta = useMemo(() => {
-    if (bodyweightLogs.length < 2) return '0.0';
-    const first = bodyweightLogs[0].weight;
-    const last = bodyweightLogs[bodyweightLogs.length - 1].weight;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const recent = bodyweightLogs.filter((log) => new Date(`${log.date}T12:00:00`).getTime() >= cutoff.getTime());
+    if (recent.length < 2) return '0.0';
+    const first = recent[0].weight;
+    const last = recent[recent.length - 1].weight;
     const diff = last - first;
-    return (diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1));
-  }, [bodyweightLogs]);
+    const shownDiff = Number(formatWeight(diff, profile.unit, 1));
+    return (shownDiff > 0 ? `+${shownDiff.toFixed(1)}` : shownDiff.toFixed(1));
+  }, [bodyweightLogs, profile.unit]);
 
   const sumEffort = useMemo(() => effortSummary(workoutsHistory, effortWin), [workoutsHistory, effortWin]);
   const histEffort = useMemo(() => effortHistogram(workoutsHistory, effortWin), [workoutsHistory, effortWin]);
@@ -361,7 +368,7 @@ export default function StatsScreen() {
       w.entries.forEach((e) => {
         const ex = exMap.get(e.id);
         if (!ex) return;
-        const validSets = hardMode ? e.sets.filter((s) => s.done && (s.rir ?? 0) <= 3) : e.sets.filter((s) => s.done);
+        const validSets = hardMode ? e.sets.filter(isHardSet) : e.sets.filter((s) => s.done);
         if (validSets.length > 0) {
           items.push({
             primary: ex.primary_muscles,
@@ -382,19 +389,24 @@ export default function StatsScreen() {
   const e1Series = useMemo(() => getExercise1RmSeries(workoutsHistory, curExId), [workoutsHistory, curExId]);
   const e1Best = useMemo(() => getExerciseBest1RM(workoutsHistory, curExId), [workoutsHistory, curExId]);
   const e1Diff30d = useMemo(() => {
-    if (e1Series.length < 2) return null;
-    const first = e1Series[0].est1RM;
-    const last = e1Series[e1Series.length - 1].est1RM;
+    const cutoff = Date.now() - 30 * 86400000;
+    const recent = e1Series.filter((point) => new Date(point.date).getTime() >= cutoff);
+    if (recent.length < 2) return null;
+    const first = recent[0].est1RM;
+    const last = recent[recent.length - 1].est1RM;
     const diff = last - first;
     return diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`;
   }, [e1Series]);
 
   const handleSaveBw = () => {
-    const num = parseFloat(bwInput);
-    if (!isNaN(num) && num > 30 && num < 250) {
-      logBodyweight(num);
+    const num = Number(bwInput.trim().replace(',', '.'));
+    const kg = displayWeightToKg(num, profile.unit);
+    if (Number.isFinite(kg) && kg >= 15 && kg <= 300) {
+      logBodyweight(kg);
+      setBwModalOpen(false);
+      return;
     }
-    setBwModalOpen(false);
+    Alert.alert(locale === 'vi' ? 'Cân nặng không hợp lệ' : 'Invalid weight', locale === 'vi' ? 'Nhập cân nặng từ 15 đến 300 kg.' : 'Enter a weight between 15 and 300 kg.');
   };
 
   const getLocalizedMuscleName = (slug: string) => {
@@ -408,6 +420,14 @@ export default function StatsScreen() {
     if (!ex) return exId;
     return locale === 'vi' ? (ex.name_vi || ex.name) : ex.name;
   };
+
+  const exercisePickerItems = useMemo(() => {
+    const query = exerciseSearch.trim().toLowerCase();
+    const exercisedIds = new Set(workoutsHistory.flatMap((workout) => workout.entries.map((entry) => entry.id)));
+    return [...EXERCISES_DATA]
+      .filter((exercise) => !query || `${exercise.name} ${exercise.name_vi || ''} ${exercise.primary_muscles.join(' ')}`.toLowerCase().includes(query))
+      .sort((a, b) => Number(exercisedIds.has(b.id)) - Number(exercisedIds.has(a.id)) || a.name.localeCompare(b.name));
+  }, [exerciseSearch, workoutsHistory]);
 
   return (
     <View style={[styles.screen, { backgroundColor: '#080C14' }]}>
@@ -452,7 +472,7 @@ export default function StatsScreen() {
           <View style={styles.kpiCard}>
             <Text style={styles.cardHeaderTitle} numberOfLines={1}>{t.stats.weightChange}</Text>
             <Text style={[styles.bigStat, { color: Number(bwDelta) <= 0 ? '#22C55E' : '#F59E0B' }]}>
-              {bwDelta} <Text style={styles.statUnit}>kg</Text>
+              {bwDelta} <Text style={styles.statUnit}>{weightUnitLabel(profile.unit)}</Text>
             </Text>
           </View>
         </View>
@@ -640,10 +660,10 @@ export default function StatsScreen() {
           <View style={styles.rowBetween}>
             <View>
               <Text style={styles.cardTitle}>{t.stats.bodyweightTrend}</Text>
-              <Text style={styles.dimSub}>{t.stats.goalLine}: {profile.goalWeight || 75} kg</Text>
+              <Text style={styles.dimSub}>{t.stats.goalLine}: {formatWeight(profile.goalWeight || 75, profile.unit, 1)} {weightUnitLabel(profile.unit)}</Text>
             </View>
             <Pressable
-              onPress={() => setBwModalOpen(true)}
+              onPress={() => { setBwInput(formatWeight(profile.weight || 70, profile.unit, 1)); setBwModalOpen(true); }}
               style={styles.btnSmallTinted}
             >
               <Feather name="plus" size={13} color="#38BDF8" />
@@ -652,9 +672,9 @@ export default function StatsScreen() {
           </View>
 
           <LineChartComponent
-            points={bodyweightLogs.map((b) => ({ y: b.weight, date: b.date }))}
-            goal={profile.goalWeight || 75}
-            unit="kg"
+            points={bodyweightLogs.map((b) => ({ y: Number(formatWeight(b.weight, profile.unit, 1)), date: b.date }))}
+            goal={Number(formatWeight(profile.goalWeight || 75, profile.unit, 1))}
+            unit={weightUnitLabel(profile.unit)}
             color="#38BDF8"
           />
         </View>
@@ -679,21 +699,21 @@ export default function StatsScreen() {
           <View style={[styles.rowBetween, { marginVertical: 8 }]}>
             <View>
               <Text style={styles.bigStat}>
-                {e1Best ? e1Best.est1RM : '--'} <Text style={styles.statUnit}>{e1Best ? 'kg' : ''}</Text>
+                {e1Best ? formatWeight(e1Best.est1RM, profile.unit, 1) : '--'} <Text style={styles.statUnit}>{e1Best ? weightUnitLabel(profile.unit) : ''}</Text>
               </Text>
               <Text style={styles.dimSub}>{t.stats.personalRecords}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={[styles.bigStat, { color: '#22C55E' }]}>
-                {e1Diff30d ? `${e1Diff30d} ` : '-- '}<Text style={styles.statUnit}>{e1Diff30d ? 'kg' : ''}</Text>
+                {e1Diff30d ? `${formatWeight(Number(e1Diff30d), profile.unit, 1)} ` : '-- '}<Text style={styles.statUnit}>{e1Diff30d ? weightUnitLabel(profile.unit) : ''}</Text>
               </Text>
               <Text style={styles.dimSub}>30d</Text>
             </View>
           </View>
 
           <LineChartComponent
-            points={e1Series.map((s) => ({ y: s.est1RM, date: s.date }))}
-            unit="kg"
+            points={e1Series.map((s) => ({ y: Number(formatWeight(s.est1RM, profile.unit, 1)), date: s.date }))}
+            unit={weightUnitLabel(profile.unit)}
             color="#22C55E"
           />
         </View>
@@ -762,9 +782,9 @@ export default function StatsScreen() {
                           <View key={sIdx} style={styles.detailSetRow}>
                             <Text style={styles.detailSetNum}>{t.workout.setNumber} {sIdx + 1}</Text>
                             <Text style={styles.detailSetVals}>
-                              {st.weight} kg × {st.reps} {t.common.reps} {st.rir !== undefined ? `(RIR ${st.rir})` : ''}
+                              {formatWeight(Number(st.weight) || 0, profile.unit, 1)} {weightUnitLabel(profile.unit)} × {st.reps} {t.common.reps} {st.rir !== undefined ? `(RIR ${st.rir})` : ''}
                             </Text>
-                            <Feather name="check" size={13} color="#22C55E" />
+                            <Feather name={st.done ? 'check' : 'minus'} size={13} color={st.done ? '#22C55E' : '#64748B'} />
                           </View>
                         ))}
                       </View>
@@ -832,9 +852,17 @@ export default function StatsScreen() {
             <View style={{ width: 36 }} />
           </View>
 
+          <TextInput
+            value={exerciseSearch}
+            onChangeText={setExerciseSearch}
+            placeholder={locale === 'vi' ? 'Tìm bài tập...' : 'Search exercises...'}
+            placeholderTextColor="#718096"
+            accessibilityLabel={locale === 'vi' ? 'Tìm bài tập' : 'Search exercises'}
+            style={{ marginHorizontal: 16, marginVertical: 10, padding: 12, borderRadius: 12, color: '#FFF', backgroundColor: '#131926' }}
+          />
           <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}>
             <View style={styles.insetList}>
-              {EXERCISES_DATA.slice(0, 18).map((ex, idx) => (
+              {exercisePickerItems.map((ex, idx) => (
                 <Pressable
                   key={ex.id}
                   onPress={() => {
@@ -844,7 +872,7 @@ export default function StatsScreen() {
                   style={({ pressed }) => [
                     styles.lrow,
                     pressed && { backgroundColor: '#162032' },
-                    idx < 17 && styles.lrowDivider,
+                    idx < exercisePickerItems.length - 1 && styles.lrowDivider,
                   ]}
                 >
                   <View style={styles.lrowGrow}>
@@ -856,6 +884,9 @@ export default function StatsScreen() {
                   {curExId === ex.id && <Feather name="check" size={18} color="#38BDF8" />}
                 </Pressable>
               ))}
+              {exercisePickerItems.length === 0 ? (
+                <Text style={{ color: '#94A3B8', padding: 16 }}>{locale === 'vi' ? 'Không tìm thấy bài tập.' : 'No exercises found.'}</Text>
+              ) : null}
             </View>
           </ScrollView>
         </View>

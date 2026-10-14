@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polygon, Rect } from 'react-native-svg';
-import { DualMannequinFocusPicker } from '@/components/DualMannequinFocusPicker';
+import { DualMannequinFocusPicker, type FocusArea } from '@/components/DualMannequinFocusPicker';
 import { ActivityHeatmap } from '@/components/ActivityHeatmap';
 import { PaywallModal } from '@/components/PaywallModal';
 import { ProgressBar } from '@/components/ProgressBar';
@@ -110,6 +111,7 @@ export default function ProfileScreen() {
     stats,
     profile,
     workoutsHistory,
+    updateProfile,
     resetOnboarding,
     loginApple,
     loginGoogle,
@@ -135,6 +137,25 @@ export default function ProfileScreen() {
     return Math.min(100, Math.round((trained / Math.max(targets.length * 2, 4)) * 100));
   }, [profile.targetMuscles, stats.muscleTrainedCount]);
 
+  const handleToggleMuscle = (area: FocusArea) => {
+    const current = profile.targetMuscles && profile.targetMuscles.length > 0
+      ? profile.targetMuscles
+      : ['Full chest', 'Big arms'];
+
+    let updated: string[];
+    if (area === 'Full body') {
+      updated = current.includes('Full body') ? [] : ['Full body'];
+    } else {
+      const filtered = current.filter((a) => a !== 'Full body');
+      if (filtered.includes(area)) {
+        updated = filtered.filter((a) => a !== area);
+      } else {
+        updated = [...filtered, area];
+      }
+    }
+    updateProfile({ targetMuscles: updated });
+  };
+
   const handleAppleSignIn = async () => {
     try {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -159,6 +180,28 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleResetOnboarding = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      isVi ? 'Làm lại Onboarding?' : 'Reset Onboarding?',
+      isVi
+        ? 'Dữ liệu khảo sát ban đầu sẽ được reset để bạn thực hiện lại luồng onboarding từ đầu.'
+        : 'Initial survey data will be reset and you will be taken to the beginning of onboarding.',
+      [
+        { text: isVi ? 'Hủy' : 'Cancel', style: 'cancel' },
+        {
+          text: isVi ? 'Bắt đầu làm lại' : 'Reset Now',
+          style: 'destructive',
+          onPress: async () => {
+            setShowSettingsModal(false);
+            await resetOnboarding();
+            router.replace('/onboarding');
+          },
+        },
+      ]
+    );
+  };
+
   const handleDeleteAccount = () => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
@@ -175,19 +218,33 @@ export default function ProfileScreen() {
             setShowSettingsModal(false);
             await deleteAccountData();
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.replace('/');
           },
         },
       ]
     );
   };
 
+  const streakGoal = profile.streakCommitment || 30;
   const CHALLENGES = [
-    { id: '1', label: isVi ? 'Giữ chuỗi tập ≥ 5 ngày' : 'Maintain a 5+ mission streak', done: stats.streak >= 5 },
+    { id: '1', label: isVi ? `Giữ chuỗi tập ≥ ${streakGoal} ngày cam kết` : `Maintain a ${streakGoal}+ day streak commitment`, done: stats.streak >= streakGoal },
     { id: '2', label: isVi ? 'Đạt 2 kỷ lục PR mới' : 'Unlock 2 new Personal Records', done: stats.prs >= 2 },
-    { id: '3', label: isVi ? 'Tập ngực tăng tiến Linear' : 'Overload chest with Linear progression', done: true },
+    { id: '3', label: isVi ? 'Tập ngực tăng tiến Linear' : 'Overload chest with Linear progression', done: false },
     { id: '4', label: isVi ? 'Tập ≥ 80% các nhóm cơ' : 'Train 80% of major muscle groups', done: false },
     { id: '5', label: isVi ? 'Đạt tổng volume 10,000kg' : 'Complete 10,000kg total tonnage', done: stats.totalVolume >= 10000 },
   ];
+
+  const bmiInfo = useMemo(() => {
+    if (!profile.height || !profile.weight || profile.height < 100) return null;
+    const hM = profile.height / 100;
+    const bmiVal = Number((profile.weight / (hM * hM)).toFixed(1));
+    let cat = 'Normal';
+    if (bmiVal < 18.5) cat = isVi ? 'Gầy' : 'Underweight';
+    else if (bmiVal < 25) cat = isVi ? 'Cân đối' : 'Normal';
+    else if (bmiVal < 30) cat = isVi ? 'Thừa cân' : 'Overweight';
+    else cat = isVi ? 'Béo phì' : 'Obese';
+    return { bmi: bmiVal, category: cat };
+  }, [profile.height, profile.weight, isVi]);
 
   const TOTAL_BARS = 22;
   const xpNeeded = stats.xpToNext || 500;
@@ -247,6 +304,34 @@ export default function ProfileScreen() {
           <Text style={styles.username}>@{profile.name ? profile.name.toLowerCase().replace(/\s+/g, '') : 'lifter_cyber'}</Text>
           <Text style={styles.userRole}>Cybernetic Athlete • {profile.goal}</Text>
 
+          {/* BIOMETRICS RPG SPEC STRIP */}
+          <View style={styles.biometricsRow}>
+            <View style={styles.bioItem}>
+              <Text style={styles.bioLabel}>{isVi ? 'GIỚI TÍNH' : 'GENDER'}</Text>
+              <Text style={styles.bioValue}>
+                {profile.gender === 'Female' ? (isVi ? 'Nữ' : 'Female') : (isVi ? 'Nam' : 'Male')}
+              </Text>
+            </View>
+            <View style={styles.bioDivider} />
+            <View style={styles.bioItem}>
+              <Text style={styles.bioLabel}>{isVi ? 'CHIỀU CAO' : 'HEIGHT'}</Text>
+              <Text style={styles.bioValue}>{profile.height || 175} cm</Text>
+            </View>
+            <View style={styles.bioDivider} />
+            <View style={styles.bioItem}>
+              <Text style={styles.bioLabel}>{isVi ? 'CÂN NẶNG' : 'WEIGHT'}</Text>
+              <Text style={styles.bioValue}>{profile.weight || 70} kg</Text>
+            </View>
+            <View style={styles.bioDivider} />
+            <View style={styles.bioItem}>
+              <Text style={styles.bioLabel}>BMI</Text>
+              <Text style={styles.bioValue}>
+                {bmiInfo ? `${bmiInfo.bmi}` : '--'}
+                {bmiInfo?.category ? <Text style={{ fontSize: 10, color: THEME.accentGreen }}> {bmiInfo.category}</Text> : null}
+              </Text>
+            </View>
+          </View>
+
           {/* COMBAT METRICS ROW */}
           <View style={styles.tripleStatsRow}>
             <View style={styles.statCol}>
@@ -299,7 +384,7 @@ export default function ProfileScreen() {
 
           <DualMannequinFocusPicker
             selectedAreas={profile.targetMuscles && profile.targetMuscles.length > 0 ? profile.targetMuscles : ['Full chest', 'Big arms']}
-            onToggleArea={() => undefined}
+            onToggleArea={handleToggleMuscle}
             accentColor={THEME.accentGreen}
           />
         </View>
@@ -358,7 +443,9 @@ export default function ProfileScreen() {
 
         {/* 4. DIAMOND / PRO MEMBERSHIP CARD */}
         <Pressable
-          onPress={() => setShowPaywall(true)}
+          onPress={() => { if (!profile.isPro) setShowPaywall(true); }}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: profile.isPro }}
           style={styles.proUpgradeCard}
         >
           <View style={styles.proHeaderRow}>
@@ -369,7 +456,7 @@ export default function ProfileScreen() {
               </View>
             </View>
             <View style={styles.viewDiamondBtn}>
-              <Text style={styles.viewDiamondText}>{isVi ? 'Nâng cấp' : 'Upgrade'}</Text>
+              <Text style={styles.viewDiamondText}>{profile.isPro ? (isVi ? 'ĐANG HOẠT ĐỘNG' : 'ACTIVE') : (isVi ? 'Nâng cấp' : 'Upgrade')}</Text>
             </View>
           </View>
 
@@ -464,6 +551,51 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+
+        {/* 7. SYSTEM & TESTING ACTIONS */}
+        <View style={styles.cardContainer}>
+          <View style={styles.cardHeader}>
+            <View>
+              <Text style={styles.sectionHeaderTitle}>{isVi ? 'HỆ THỐNG & THỬ NGHIỆM' : 'SYSTEM & TESTING'}</Text>
+              <Text style={styles.timeRemainingSub}>{isVi ? 'Công cụ quản trị & test app' : 'Testing tools & preferences'}</Text>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={handleResetOnboarding}
+            style={styles.systemActionBtn}
+          >
+            <View style={styles.systemActionIconBox}>
+              <Feather name="refresh-cw" size={16} color="#38BDF8" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.systemActionTitle}>{t.profile.resetOnboarding}</Text>
+              <Text style={styles.systemActionSub}>
+                {isVi ? 'Quay lại màn hình giới thiệu & khảo sát ban đầu' : 'Return to initial onboarding survey flow'}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#64748B" />
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowSettingsModal(true);
+            }}
+            style={[styles.systemActionBtn, { marginTop: 8 }]}
+          >
+            <View style={[styles.systemActionIconBox, { backgroundColor: '#1E293B' }]}>
+              <Feather name="settings" size={16} color="#94A3B8" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.systemActionTitle}>{t.profile.settings}</Text>
+              <Text style={styles.systemActionSub}>
+                {isVi ? 'Ngôn ngữ, điều khoản & quản lý dữ liệu' : 'Language, terms & data management'}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#64748B" />
+          </Pressable>
+        </View>
       </ScrollView>
 
       {/* PRO PAYWALL MODAL */}
@@ -532,14 +664,11 @@ export default function ProfileScreen() {
 
             {/* Reset Onboarding Option */}
             <Pressable
-              onPress={async () => {
-                setShowSettingsModal(false);
-                await resetOnboarding();
-              }}
+              onPress={handleResetOnboarding}
               style={styles.resetBtnRow}
             >
-              <Feather name="refresh-cw" size={16} color="#E2E8F0" />
-              <Text style={styles.resetBtnText}>{t.profile.resetOnboarding}</Text>
+              <Feather name="refresh-cw" size={16} color="#38BDF8" />
+              <Text style={[styles.resetBtnText, { color: '#E2E8F0' }]}>{t.profile.resetOnboarding}</Text>
             </Pressable>
 
             {/* Apple Guideline 5.1.1(v): Permanent Account Deletion */}
@@ -638,6 +767,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     width: '100%',
     marginBottom: 12,
+  },
+  biometricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F1626',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 8,
+    width: '100%',
+  },
+  bioItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  bioLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  bioValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  bioDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#1E293B',
   },
   statCol: { flex: 1, alignItems: 'center', gap: 3 },
   statNumber: { color: '#FFF', fontSize: 15, fontWeight: '800' },
@@ -957,5 +1121,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#080C14',
+  },
+  systemActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#111724',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  systemActionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  systemActionTitle: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  systemActionSub: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 2,
   },
 });
