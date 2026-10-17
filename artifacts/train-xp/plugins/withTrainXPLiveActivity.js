@@ -15,9 +15,10 @@ function hasTarget(project, name) {
 }
 
 function addSources(project, targetId, files) {
+  const mainGroup = project.getFirstProject().firstProject.mainGroup;
   for (const file of files) {
     if (!project.hasFile(file))
-      project.addSourceFile(file, { target: targetId });
+      project.addSourceFile(file, { target: targetId }, mainGroup);
   }
 }
 
@@ -90,6 +91,8 @@ const withTrainXPLiveActivity = (config) => {
         EXTENSION_BUNDLE_ID,
       );
       const widgetTarget = created.pbxNativeTarget;
+      project.addBuildPhase([], "PBXSourcesBuildPhase", "Sources", created.uuid);
+      project.addBuildPhase([], "PBXFrameworksBuildPhase", "Frameworks", created.uuid);
       addSources(project, created.uuid, [
         `${EXTENSION_NAME}/TrainXPWidgetBundle.swift`,
         `${EXTENSION_NAME}/WorkoutLiveActivityWidget.swift`,
@@ -102,7 +105,7 @@ const withTrainXPLiveActivity = (config) => {
         PRODUCT_BUNDLE_IDENTIFIER: EXTENSION_BUNDLE_ID,
         SKIP_INSTALL: "YES",
         SWIFT_VERSION: "5.0",
-        TARGETED_DEVICE_FAMILY: "1,2",
+        TARGETED_DEVICE_FAMILY: '"1,2"',
       });
     }
     return mod;

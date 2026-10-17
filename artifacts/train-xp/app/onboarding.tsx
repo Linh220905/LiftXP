@@ -7,7 +7,7 @@ import { Text, TextInput } from "@/components/AppTypography";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -564,26 +564,25 @@ export default function OnboardingScreen() {
   });
   const scrollRef = useRef<any>(null);
 
-  const handleDobChange = useCallback(
-    ({ day, month, year }: { day: number; month: string; year: number }) => {
-      setProfile((prev) => {
-        if (
-          prev.birthDay === day &&
-          prev.birthMonth === month &&
-          prev.birthYear === year
-        ) {
-          return prev;
-        }
-        return {
-          ...prev,
-          birthDay: day,
-          birthMonth: month,
-          birthYear: year,
-        };
-      });
-    },
-    [],
-  );
+  const handleDobChange = (
+    { day, month, year }: { day: number; month: string; year: number }
+  ) => {
+    setProfile((prev) => {
+      if (
+        prev.birthDay === day &&
+        prev.birthMonth === month &&
+        prev.birthYear === year
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        birthDay: day,
+        birthMonth: month,
+        birthYear: year,
+      };
+    });
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
