@@ -1,6 +1,7 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import Foundation
 
 private let neonCyan = Color(red: 56 / 255, green: 189 / 255, blue: 248 / 255)
 private let neonBlue = Color(red: 2 / 255, green: 132 / 255, blue: 199 / 255)

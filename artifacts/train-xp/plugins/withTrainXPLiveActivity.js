@@ -37,6 +37,8 @@ const withTrainXPLiveActivity = (config) => {
     "ios",
     async (mod) => {
       const projectRoot = mod.modRequest.platformProjectRoot;
+      const appVersion = mod.version || "1.0.0";
+      const appBuildNumber = mod.ios?.buildNumber || "1";
       const sourceRoot = path.resolve(__dirname, "../ios-widgets");
       const appSourceRoot = path.join(projectRoot, "TrainXPNative");
       const extensionSourceRoot = path.join(projectRoot, EXTENSION_NAME);
@@ -67,7 +69,17 @@ const withTrainXPLiveActivity = (config) => {
         path.join(extensionSourceRoot, "Info.plist"),
         `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict></dict></plist>`,
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>$(DEVELOPMENT_LANGUAGE)</string>
+<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+<key>CFBundlePackageType</key><string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+<key>CFBundleShortVersionString</key><string>${appVersion}</string>
+<key>CFBundleVersion</key><string>${appBuildNumber}</string>
+<key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
+</dict></plist>`,
       );
       return mod;
     },

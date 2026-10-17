@@ -1,5 +1,6 @@
 import Foundation
 import ActivityKit
+import React
 
 @objc(TrainXPLiveActivity)
 public class TrainXPLiveActivity: NSObject {
