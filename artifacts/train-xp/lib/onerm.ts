@@ -1,7 +1,7 @@
 // 1RM Estimation and Historical Progression Engine for TrainXP
 
-import { calculate1RM } from './progression';
-import { type WorkoutHistoryItem } from './effort';
+import { calculate1RM } from "./progression";
+import { type WorkoutHistoryItem } from "./effort";
 
 export interface OneRmPoint {
   date: string;
@@ -19,7 +19,9 @@ export interface Best1RmRecord {
 }
 
 /** Get best 1RM set from a list of sets for an exercise entry */
-export function bestSetOfEntry(sets: { weight?: number | string; reps?: number | string; done: boolean }[]): { est1RM: number; weight: number; reps: number } | null {
+export function bestSetOfEntry(
+  sets: { weight?: number | string; reps?: number | string; done: boolean }[],
+): { est1RM: number; weight: number; reps: number } | null {
   let best: { est1RM: number; weight: number; reps: number } | null = null;
 
   sets.forEach((s) => {
@@ -39,14 +41,17 @@ export function bestSetOfEntry(sets: { weight?: number | string; reps?: number |
 }
 
 /** Get 1RM timeline progression series for a specific exercise */
-export function getExercise1RmSeries(workouts: WorkoutHistoryItem[], exerciseId: string): OneRmPoint[] {
+export function getExercise1RmSeries(
+  workouts: WorkoutHistoryItem[],
+  exerciseId: string,
+): OneRmPoint[] {
   const points: OneRmPoint[] = [];
 
   workouts.forEach((w) => {
-    const entry = w.entries.find((e) => e.id === exerciseId);
-    if (!entry) return;
-
-    const best = bestSetOfEntry(entry.sets);
+    const sets = w.entries
+      .filter((e) => e.id === exerciseId)
+      .flatMap((e) => e.sets);
+    const best = bestSetOfEntry(sets);
     if (best) {
       points.push({
         date: w.date,
@@ -62,7 +67,10 @@ export function getExercise1RmSeries(workouts: WorkoutHistoryItem[], exerciseId:
 }
 
 /** Get all-time best estimated 1RM for an exercise */
-export function getExerciseBest1RM(workouts: WorkoutHistoryItem[], exerciseId: string): Best1RmRecord | null {
+export function getExerciseBest1RM(
+  workouts: WorkoutHistoryItem[],
+  exerciseId: string,
+): Best1RmRecord | null {
   const series = getExercise1RmSeries(workouts, exerciseId);
   if (series.length === 0) return null;
 

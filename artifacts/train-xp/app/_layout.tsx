@@ -1,43 +1,33 @@
-import React, { useEffect } from 'react';
-import { Text, TextInput } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import React, { useEffect } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
   useFonts,
-} from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { AppStateProvider } from '@/context/AppState';
-import { I18nProvider } from '@/lib/i18n';
+} from "@expo-google-fonts/inter";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { AppStateProvider } from "@/context/AppState";
+import { I18nProvider } from "@/lib/i18n";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-try {
-  (Text as any).defaultProps = (Text as any).defaultProps || {};
-  (Text as any).defaultProps.style = { fontFamily: 'Inter_500Medium' };
-  (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
-  (TextInput as any).defaultProps.style = { fontFamily: 'Inter_500Medium' };
-} catch {
-  // Ignore in environments where defaultProps is frozen
-}
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false, headerBackTitle: 'Back' }}>
+    <Stack screenOptions={{ headerShown: false, headerBackTitle: "Back" }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+      <Stack.Screen name="+not-found" options={{ title: "Oops!" }} />
     </Stack>
   );
 }
@@ -52,7 +42,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync().catch(() => undefined);
     }
   }, [fontsLoaded, fontError]);
 
@@ -64,7 +54,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <I18nProvider>
             <AppStateProvider>
-              <GestureHandlerRootView>
+              <GestureHandlerRootView style={{ flex: 1 }}>
                 <KeyboardProvider>
                   <RootLayoutNav />
                 </KeyboardProvider>

@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { Text } from "@/components/AppTypography";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
   Easing,
+  ScrollView,
   Pressable,
   StyleSheet,
-  Text,
   View,
-} from 'react-native';
+} from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -15,11 +16,11 @@ import Svg, {
   Path,
   RadialGradient,
   Stop,
-} from 'react-native-svg';
-import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useI18n } from '@/lib/i18n';
+} from "react-native-svg";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useI18n } from "@/lib/i18n";
 
 interface BiometricFingerprintConfirmProps {
   userName?: string;
@@ -28,14 +29,14 @@ interface BiometricFingerprintConfirmProps {
   streakGoalDays?: number;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /**
  * Authentic High-Fidelity Biometric Fingerprint Vector
  * Features fine papillary ridge loops, central whorls, and delta arches.
  */
 function AuthenticFingerprintSvg({
-  color = '#38BDF8',
+  color = "#38BDF8",
   glowProgress = 0,
 }: {
   color?: string;
@@ -47,20 +48,22 @@ function AuthenticFingerprintSvg({
     <Svg width="96" height="114" viewBox="0 0 92 110">
       <Defs>
         <LinearGradient id="fpRidgeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <Stop offset="0%" stopColor={isGlowing ? '#BAE6FD' : '#64748B'} />
-          <Stop offset="45%" stopColor={isGlowing ? '#38BDF8' : '#475569'} />
-          <Stop offset="100%" stopColor={isGlowing ? '#0284C7' : '#334155'} />
+          <Stop offset="0%" stopColor={isGlowing ? "#BAE6FD" : "#64748B"} />
+          <Stop offset="45%" stopColor={isGlowing ? "#38BDF8" : "#475569"} />
+          <Stop offset="100%" stopColor={isGlowing ? "#0284C7" : "#334155"} />
         </LinearGradient>
         <RadialGradient id="fpCoreGlow" cx="50%" cy="50%" rx="50%" ry="50%">
-          <Stop offset="0%" stopColor="#38BDF8" stopOpacity={isGlowing ? 0.7 : 0} />
+          <Stop
+            offset="0%"
+            stopColor="#38BDF8"
+            stopOpacity={isGlowing ? 0.7 : 0}
+          />
           <Stop offset="100%" stopColor="#0284C7" stopOpacity="0" />
         </RadialGradient>
       </Defs>
 
       {/* Core Glow Background */}
-      {isGlowing && (
-        <Circle cx="46" cy="55" r="44" fill="url(#fpCoreGlow)" />
-      )}
+      {isGlowing && <Circle cx="46" cy="55" r="44" fill="url(#fpCoreGlow)" />}
 
       {/* Papillary Ridges - Anatomical Biometric Vector Pattern */}
       {/* 1. Innermost Central Loop */}
@@ -243,9 +246,30 @@ export function BiometricFingerprintConfirm({
   const podPulse = useRef(new Animated.Value(1)).current;
   const laserAnim = useRef(new Animated.Value(0)).current;
 
+  const mountedRef = useRef(true);
+  const confirmedRef = useRef(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashRef = useRef<Animated.CompositeAnimation | null>(null);
+  const confirmOnce = () => {
+    if (!mountedRef.current || confirmedRef.current) return;
+    confirmedRef.current = true;
+    onConfirmed();
+  };
   const hapticTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
   const laserLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (hapticTimerRef.current) clearInterval(hapticTimerRef.current);
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      animRef.current?.stop();
+      laserLoopRef.current?.stop();
+      flashRef.current?.stop();
+    };
+  }, []);
 
   // Idle gentle breathing pulse on scanner pod
   useEffect(() => {
@@ -263,7 +287,7 @@ export function BiometricFingerprintConfirm({
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     loop.start();
     return () => loop.stop();
@@ -273,7 +297,7 @@ export function BiometricFingerprintConfirm({
   useEffect(() => {
     if (isHolding) {
       laserLoopRef.current = Animated.loop(
-        Animated.sequence([
+        (flashRef.current = Animated.sequence([
           Animated.timing(laserAnim, {
             toValue: 1,
             duration: 650,
@@ -286,13 +310,14 @@ export function BiometricFingerprintConfirm({
             easing: Easing.inOut(Easing.quad),
             useNativeDriver: true,
           }),
-        ])
+        ])),
       );
       laserLoopRef.current.start();
     } else {
       laserLoopRef.current?.stop();
       laserAnim.setValue(0);
     }
+    return () => laserLoopRef.current?.stop();
   }, [isHolding, laserAnim]);
 
   // Listener to track progress percentage
@@ -312,6 +337,7 @@ export function BiometricFingerprintConfirm({
 
   const handlePressIn = () => {
     if (isSuccess) return;
+    if (hapticTimerRef.current) clearInterval(hapticTimerRef.current);
     setIsHolding(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
@@ -387,13 +413,15 @@ export function BiometricFingerprintConfirm({
     ]);
 
     animRef.current.start(({ finished }) => {
-      if (finished) {
+      if (finished && mountedRef.current) {
         if (hapticTimerRef.current) clearInterval(hapticTimerRef.current);
         setIsSuccess(true);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
 
         // Screen-wide triumph flash veil
-        Animated.sequence([
+        flashRef.current = Animated.sequence([
           Animated.timing(flashOpacity, {
             toValue: 0.95,
             duration: 140,
@@ -404,10 +432,10 @@ export function BiometricFingerprintConfirm({
             duration: 380,
             useNativeDriver: true,
           }),
-        ]).start(() => {
-          setTimeout(() => {
-            onConfirmed();
-          }, 220);
+        ]);
+        flashRef.current.start(({ finished }) => {
+          if (!finished || !mountedRef.current) return;
+          confirmTimerRef.current = setTimeout(confirmOnce, 220);
         });
       }
     });
@@ -514,7 +542,18 @@ export function BiometricFingerprintConfirm({
         style={[styles.fullscreenFlash, { opacity: flashOpacity }]}
       />
 
-      <View style={styles.contentWrap}>
+      <ScrollView
+        style={{ width: "100%" }}
+        contentContainerStyle={[
+          styles.contentWrap,
+          {
+            flexGrow: 1,
+            flex: undefined,
+            alignSelf: "center",
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* HEADER TITLE & MOTIVATIONAL KICKER */}
         <View style={styles.topSection}>
           <View style={styles.badgeRow}>
@@ -523,15 +562,10 @@ export function BiometricFingerprintConfirm({
               {t.onboarding.commitmentPledgeBadge}
             </Text>
           </View>
-
           <Text style={styles.mainTitle}>
-            {t.onboarding.pledgeTitleFmt.split('{name}')[0]}
+            {t.onboarding.pledgeTitleFmt.split("{name}")[0]}
             <Text style={styles.nameHighlight}>{displayName}</Text>
-            {t.onboarding.pledgeTitleFmt.split('{name}')[1] || ''}
-          </Text>
-
-          <Text style={styles.subTitle}>
-            {t.onboarding.pledgeSub}
+            {t.onboarding.pledgeTitleFmt.split("{name}")[1] || ""}
           </Text>
         </View>
 
@@ -542,7 +576,10 @@ export function BiometricFingerprintConfirm({
               <Feather name="check" size={13} color="#38BDF8" />
             </View>
             <Text style={styles.pledgeItemText}>
-              {t.onboarding.pledgeItemStreak.replace('{days}', String(streakGoalDays))}
+              {t.onboarding.pledgeItemStreak.replace(
+                "{days}",
+                String(streakGoalDays),
+              )}
             </Text>
           </View>
 
@@ -554,7 +591,6 @@ export function BiometricFingerprintConfirm({
               {t.onboarding.pledgeItemOverload}
             </Text>
           </View>
-
           <View style={styles.pledgeRow}>
             <View style={styles.pledgeIconCircle}>
               <Feather name="check" size={13} color="#38BDF8" />
@@ -605,7 +641,7 @@ export function BiometricFingerprintConfirm({
               styles.scannerOuterRing,
               {
                 transform: [{ scale: isHolding ? 1.08 : podPulse }],
-                borderColor: isHolding ? '#38BDF8' : '#22304A',
+                borderColor: isHolding ? "#38BDF8" : "#22304A",
               },
             ]}
           >
@@ -624,6 +660,10 @@ export function BiometricFingerprintConfirm({
             >
               {/* Pressable Fingerprint Trigger */}
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.onboarding.tapAndHoldCommit}
+                accessibilityActions={[{ name: "activate" }]}
+                onAccessibilityAction={confirmOnce}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 style={({ pressed }) => [
@@ -633,7 +673,7 @@ export function BiometricFingerprintConfirm({
                 hitSlop={20}
               >
                 <AuthenticFingerprintSvg
-                  color={isHolding ? '#38BDF8' : '#64748B'}
+                  color={isHolding ? "#38BDF8" : "#64748B"}
                   glowProgress={isHolding ? 1 : 0}
                 />
 
@@ -655,9 +695,17 @@ export function BiometricFingerprintConfirm({
           <View style={styles.statusBox}>
             {!isSuccess && (
               <>
-                <Text style={[styles.statusText, isHolding && styles.statusTextActive]}>
+                <Text
+                  style={[
+                    styles.statusText,
+                    isHolding && styles.statusTextActive,
+                  ]}
+                >
                   {isHolding
-                    ? t.onboarding.scanningCommitStatus.replace('{percent}', String(progressPercent))
+                    ? t.onboarding.scanningCommitStatus.replace(
+                        "{percent}",
+                        String(progressPercent),
+                      )
                     : t.onboarding.touchAndHoldCommit}
                 </Text>
                 <Text style={styles.statusSub}>
@@ -667,7 +715,16 @@ export function BiometricFingerprintConfirm({
             )}
           </View>
         </View>
-      </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={confirmOnce}
+          style={{ minHeight: 48, justifyContent: "center", padding: 12 }}
+        >
+          <Text style={{ color: "#94A3B8", textAlign: "center" }}>
+            {t.onboarding.continue}
+          </Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -747,13 +804,6 @@ const styles = StyleSheet.create({
   },
   nameHighlight: {
     color: '#38BDF8',
-  },
-  subTitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-    paddingHorizontal: 6,
   },
   pledgeCard: {
     width: '100%',
@@ -928,7 +978,7 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
   },
   statusSub: {
-    color: '#64748B',
+    color: '#94A3B8',
     fontSize: 11,
     marginTop: 4,
     fontWeight: '500',

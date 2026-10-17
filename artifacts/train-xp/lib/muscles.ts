@@ -1,112 +1,119 @@
 // Muscle engine for TrainXP — normalization, alias resolution, and training load quantizer.
 
 export const MUSCLES = [
-  'trapezius',
-  'deltoids',
-  'chest',
-  'upper-back',
-  'serratus',
-  'biceps',
-  'triceps',
-  'forearm',
-  'abs',
-  'obliques',
-  'lower-back',
-  'gluteal',
-  'quadriceps',
-  'hamstring',
-  'adductors',
-  'hip-flexors',
-  'calves',
-  'tibialis',
+  "trapezius",
+  "deltoids",
+  "chest",
+  "upper-back",
+  "serratus",
+  "biceps",
+  "triceps",
+  "forearm",
+  "abs",
+  "obliques",
+  "lower-back",
+  "gluteal",
+  "quadriceps",
+  "hamstring",
+  "adductors",
+  "hip-flexors",
+  "calves",
+  "tibialis",
 ] as const;
 
 export type MuscleSlug = (typeof MUSCLES)[number];
 
-export const INERT_PARTS = ['head', 'neck', 'hands', 'feet', 'knees', 'ankles'] as const;
+export const INERT_PARTS = [
+  "head",
+  "neck",
+  "hands",
+  "feet",
+  "knees",
+  "ankles",
+] as const;
 
 export const MUSCLE_NAMES: Record<MuscleSlug, { en: string; vi: string }> = {
-  trapezius: { en: 'Traps', vi: 'Cầu vai' },
-  deltoids: { en: 'Shoulders', vi: 'Cơ vai' },
-  chest: { en: 'Chest', vi: 'Cơ ngực' },
-  'upper-back': { en: 'Upper Back / Lats', vi: 'Lưng xô trên' },
-  serratus: { en: 'Serratus', vi: 'Cơ liên sườn' },
-  biceps: { en: 'Biceps', vi: 'Tay trước' },
-  triceps: { en: 'Triceps', vi: 'Tay sau' },
-  forearm: { en: 'Forearms', vi: 'Cẳng tay' },
-  abs: { en: 'Abs', vi: 'Cơ bụng' },
-  obliques: { en: 'Obliques', vi: 'Cơ bụng liên sườn' },
-  'lower-back': { en: 'Lower Back', vi: 'Lưng dưới' },
-  gluteal: { en: 'Glutes', vi: 'Cơ mông' },
-  quadriceps: { en: 'Quads', vi: 'Đùi trước' },
-  hamstring: { en: 'Hamstrings', vi: 'Đùi sau' },
-  adductors: { en: 'Adductors', vi: 'Khép đùi' },
-  'hip-flexors': { en: 'Hip Flexors', vi: 'Gập hông' },
-  calves: { en: 'Calves', vi: 'Bắp chân' },
-  tibialis: { en: 'Shins', vi: 'Ống đồng' },
+  trapezius: { en: "Traps", vi: "Cầu vai" },
+  deltoids: { en: "Shoulders", vi: "Cơ vai" },
+  chest: { en: "Chest", vi: "Cơ ngực" },
+  "upper-back": { en: "Upper Back / Lats", vi: "Lưng xô trên" },
+  serratus: { en: "Serratus", vi: "Cơ liên sườn" },
+  biceps: { en: "Biceps", vi: "Tay trước" },
+  triceps: { en: "Triceps", vi: "Tay sau" },
+  forearm: { en: "Forearms", vi: "Cẳng tay" },
+  abs: { en: "Abs", vi: "Cơ bụng" },
+  obliques: { en: "Obliques", vi: "Cơ bụng liên sườn" },
+  "lower-back": { en: "Lower Back", vi: "Lưng dưới" },
+  gluteal: { en: "Glutes", vi: "Cơ mông" },
+  quadriceps: { en: "Quads", vi: "Đùi trước" },
+  hamstring: { en: "Hamstrings", vi: "Đùi sau" },
+  adductors: { en: "Adductors", vi: "Khép đùi" },
+  "hip-flexors": { en: "Hip Flexors", vi: "Gập hông" },
+  calves: { en: "Calves", vi: "Bắp chân" },
+  tibialis: { en: "Shins", vi: "Ống đồng" },
 };
 
 // Aliases mapping free text from datasets to canonical muscle slugs
 const ALIAS_MAP: Record<string, MuscleSlug | null> = {
-  abs: 'abs',
-  abdominals: 'abs',
-  'lower abs': 'abs',
-  core: 'abs',
-  chest: 'chest',
-  pectorals: 'chest',
-  'upper chest': 'chest',
-  biceps: 'biceps',
-  brachialis: 'biceps',
-  triceps: 'triceps',
-  delts: 'deltoids',
-  deltoids: 'deltoids',
-  shoulders: 'deltoids',
-  'front delts': 'deltoids',
-  'rear deltoids': 'deltoids',
-  'rotator cuff': 'deltoids',
-  lats: 'upper-back',
-  'latissimus dorsi': 'upper-back',
-  rhomboids: 'upper-back',
-  'upper back': 'upper-back',
-  back: 'upper-back',
-  traps: 'trapezius',
-  trapezius: 'trapezius',
-  'levator scapulae': 'trapezius',
-  serratus: 'serratus',
-  'serratus anterior': 'serratus',
-  forearms: 'forearm',
-  forearm: 'forearm',
-  wrists: 'forearm',
-  'grip muscles': 'forearm',
-  obliques: 'obliques',
-  'lower back': 'lower-back',
-  spine: 'lower-back',
-  erector: 'lower-back',
-  glutes: 'gluteal',
-  gluteal: 'gluteal',
-  abductors: 'gluteal',
-  quads: 'quadriceps',
-  quadriceps: 'quadriceps',
-  hamstrings: 'hamstring',
-  hamstring: 'hamstring',
-  calves: 'calves',
-  soleus: 'calves',
-  gastrocnemius: 'calves',
-  shins: 'tibialis',
-  tibialis: 'tibialis',
-  'tibialis anterior': 'tibialis',
-  adductors: 'adductors',
-  groin: 'adductors',
-  'inner thighs': 'adductors',
-  'hip flexors': 'hip-flexors',
-  'hip-flexors': 'hip-flexors',
+  abs: "abs",
+  abdominals: "abs",
+  "lower abs": "abs",
+  core: "abs",
+  chest: "chest",
+  pectorals: "chest",
+  "upper chest": "chest",
+  biceps: "biceps",
+  brachialis: "biceps",
+  triceps: "triceps",
+  delts: "deltoids",
+  deltoids: "deltoids",
+  shoulders: "deltoids",
+  "front delts": "deltoids",
+  "rear deltoids": "deltoids",
+  "rotator cuff": "deltoids",
+  lats: "upper-back",
+  "latissimus dorsi": "upper-back",
+  rhomboids: "upper-back",
+  "upper back": "upper-back",
+  back: "upper-back",
+  traps: "trapezius",
+  trapezius: "trapezius",
+  "levator scapulae": "trapezius",
+  serratus: "serratus",
+  "serratus anterior": "serratus",
+  forearms: "forearm",
+  forearm: "forearm",
+  wrists: "forearm",
+  "grip muscles": "forearm",
+  obliques: "obliques",
+  "lower back": "lower-back",
+  spine: "lower-back",
+  erector: "lower-back",
+  glutes: "gluteal",
+  gluteal: "gluteal",
+  abductors: "gluteal",
+  quads: "quadriceps",
+  quadriceps: "quadriceps",
+  hamstrings: "hamstring",
+  hamstring: "hamstring",
+  calves: "calves",
+  soleus: "calves",
+  gastrocnemius: "calves",
+  shins: "tibialis",
+  tibialis: "tibialis",
+  "tibialis anterior": "tibialis",
+  adductors: "adductors",
+  groin: "adductors",
+  "inner thighs": "adductors",
+  "hip flexors": "hip-flexors",
+  "hip-flexors": "hip-flexors",
   // Inert/Non-drawable
   neck: null,
   hands: null,
   feet: null,
   ankles: null,
   cardio: null,
-  'cardiovascular system': null,
+  "cardiovascular system": null,
 };
 
 const SECONDARY_WEIGHT = 0.4;
@@ -169,7 +176,9 @@ export function loadOf(items: SetLoadItem[]): Record<MuscleSlug, number> {
 
 export type IntensityLevel = 0 | 1 | 2 | 3 | 4;
 
-export function levelsOf(load: Partial<Record<MuscleSlug, number>>): Record<MuscleSlug, IntensityLevel> {
+export function levelsOf(
+  load: Partial<Record<MuscleSlug, number>>,
+): Record<MuscleSlug, IntensityLevel> {
   const max = Math.max(0, ...MUSCLES.map((m) => load[m] || 0));
   const levels: Partial<Record<MuscleSlug, IntensityLevel>> = {};
 
@@ -178,7 +187,10 @@ export function levelsOf(load: Partial<Record<MuscleSlug, number>>): Record<Musc
     if (!v || max <= 0) {
       levels[m] = 0;
     } else {
-      const level = Math.max(1, Math.min(4, Math.ceil((v / max) * 4))) as IntensityLevel;
+      const level = Math.max(
+        1,
+        Math.min(4, Math.ceil((v / max) * 4)),
+      ) as IntensityLevel;
       levels[m] = level;
     }
   });
@@ -186,7 +198,10 @@ export function levelsOf(load: Partial<Record<MuscleSlug, number>>): Record<Musc
   return levels as Record<MuscleSlug, IntensityLevel>;
 }
 
-export function rankOf(load: Partial<Record<MuscleSlug, number>>): { worked: MuscleSlug[]; missed: MuscleSlug[] } {
+export function rankOf(load: Partial<Record<MuscleSlug, number>>): {
+  worked: MuscleSlug[];
+  missed: MuscleSlug[];
+} {
   const entries = (Object.keys(load) as MuscleSlug[])
     .map((slug) => ({ slug, count: load[slug] || 0 }))
     .sort((a, b) => b.count - a.count);
@@ -196,4 +211,3 @@ export function rankOf(load: Partial<Record<MuscleSlug, number>>): { worked: Mus
 
   return { worked, missed };
 }
-

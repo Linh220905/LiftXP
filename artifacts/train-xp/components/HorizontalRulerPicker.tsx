@@ -1,16 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Text } from "@/components/AppTypography";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 
 export interface HorizontalRulerPickerProps {
   min: number;
@@ -36,10 +36,10 @@ export function HorizontalRulerPicker({
   unit,
   onValueChange,
   headerTitle,
-  headerIcon = 'activity',
+  headerIcon = "activity",
   presets,
   fractionDigits = 0,
-  needleColor = '#38BDF8',
+  needleColor = "#38BDF8",
 }: HorizontalRulerPickerProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -51,7 +51,12 @@ export function HorizontalRulerPicker({
   }, [min, max, step]);
 
   const items = useMemo(() => {
-    const list: { val: number; isMajor: boolean; isMid: boolean; label?: string }[] = [];
+    const list: {
+      val: number;
+      isMajor: boolean;
+      isMid: boolean;
+      label?: string;
+    }[] = [];
     for (let i = 0; i < totalItems; i++) {
       const val = Number((min + i * step).toFixed(fractionDigits));
       let isMajor = false;
@@ -80,7 +85,10 @@ export function HorizontalRulerPicker({
   // Initial scroll to current value on layout ready
   useEffect(() => {
     if (containerWidth > 0 && !isScrollingRef.current) {
-      const targetIndex = Math.max(0, Math.min(totalItems - 1, Math.round((value - min) / step)));
+      const targetIndex = Math.max(
+        0,
+        Math.min(totalItems - 1, Math.round((value - min) / step)),
+      );
       const targetOffset = targetIndex * ITEM_WIDTH;
       scrollRef.current?.scrollTo({ x: targetOffset, animated: false });
       lastEmittedValueRef.current = value;
@@ -88,7 +96,7 @@ export function HorizontalRulerPicker({
   }, [containerWidth, min, step, totalItems, value]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    isScrollingRef.current = true;
+    if (!isScrollingRef.current) return;
     const offsetX = event.nativeEvent.contentOffset.x;
     const rawIndex = Math.round(offsetX / ITEM_WIDTH);
     const clampedIndex = Math.max(0, Math.min(totalItems - 1, rawIndex));
@@ -115,23 +123,33 @@ export function HorizontalRulerPicker({
   };
 
   const adjustBy = (delta: number) => {
-    const next = Number(Math.max(min, Math.min(max, value + delta)).toFixed(fractionDigits));
+    const next = Number(
+      Math.max(min, Math.min(max, value + delta)).toFixed(fractionDigits),
+    );
     if (next !== value) {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onValueChange(next);
       const targetIndex = Math.round((next - min) / step);
-      scrollRef.current?.scrollTo({ x: targetIndex * ITEM_WIDTH, animated: true });
+      scrollRef.current?.scrollTo({
+        x: targetIndex * ITEM_WIDTH,
+        animated: true,
+      });
     }
   };
 
   const selectPreset = (presetVal: number) => {
     void Haptics.selectionAsync();
+    presetVal = Math.max(min, Math.min(max, presetVal));
     onValueChange(presetVal);
     const targetIndex = Math.round((presetVal - min) / step);
-    scrollRef.current?.scrollTo({ x: targetIndex * ITEM_WIDTH, animated: true });
+    scrollRef.current?.scrollTo({
+      x: targetIndex * ITEM_WIDTH,
+      animated: true,
+    });
   };
 
-  const sidePadding = containerWidth > 0 ? (containerWidth - ITEM_WIDTH) / 2 : 140;
+  const sidePadding =
+    containerWidth > 0 ? (containerWidth - ITEM_WIDTH) / 2 : 140;
 
   return (
     <View
@@ -153,7 +171,10 @@ export function HorizontalRulerPicker({
       <View style={styles.valueRow}>
         <Pressable
           onPress={() => adjustBy(-step)}
-          style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            pressed && styles.stepBtnPressed,
+          ]}
           hitSlop={8}
         >
           <Feather name="minus" size={18} color="#38BDF8" />
@@ -161,14 +182,19 @@ export function HorizontalRulerPicker({
 
         <View style={styles.valueCenter}>
           <Text style={styles.valueNumber}>
-            {fractionDigits > 0 ? value.toFixed(fractionDigits) : Math.round(value)}
+            {fractionDigits > 0
+              ? value.toFixed(fractionDigits)
+              : Math.round(value)}
           </Text>
           <Text style={styles.valueUnit}>{unit}</Text>
         </View>
 
         <Pressable
           onPress={() => adjustBy(step)}
-          style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            pressed && styles.stepBtnPressed,
+          ]}
           hitSlop={8}
         >
           <Feather name="plus" size={18} color="#38BDF8" />
@@ -183,12 +209,18 @@ export function HorizontalRulerPicker({
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
           decelerationRate="fast"
+          onScrollBeginDrag={() => {
+            isScrollingRef.current = true;
+          }}
+          onMomentumScrollBegin={() => {
+            isScrollingRef.current = true;
+          }}
           onScroll={handleScroll}
           onMomentumScrollEnd={handleScrollEnd}
           onScrollEndDrag={handleScrollEnd}
           contentContainerStyle={{
             paddingHorizontal: sidePadding,
-            alignItems: 'flex-start',
+            alignItems: "flex-start",
           }}
           nestedScrollEnabled
         >
@@ -200,8 +232,8 @@ export function HorizontalRulerPicker({
                   item.isMajor
                     ? styles.tickMajor
                     : item.isMid
-                    ? styles.tickMid
-                    : styles.tickMinor,
+                      ? styles.tickMid
+                      : styles.tickMinor,
                 ]}
               />
               {item.isMajor && item.label ? (
@@ -217,21 +249,23 @@ export function HorizontalRulerPicker({
 
         {/* Center Target Needle Indicator */}
         <View pointerEvents="none" style={styles.needleWrapper}>
-          <View style={[styles.needleDiamond, { borderBottomColor: needleColor }]} />
+          <View
+            style={[styles.needleDiamond, { borderBottomColor: needleColor }]}
+          />
           <View style={[styles.needleLine, { backgroundColor: needleColor }]} />
         </View>
 
         {/* Left & Right Edge Fade Gradients */}
         <LinearGradient
           pointerEvents="none"
-          colors={['#131926', 'rgba(19, 25, 38, 0)']}
+          colors={["#131926", "rgba(19, 25, 38, 0)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.fadeLeft}
         />
         <LinearGradient
           pointerEvents="none"
-          colors={['rgba(19, 25, 38, 0)', '#131926']}
+          colors={["rgba(19, 25, 38, 0)", "#131926"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.fadeRight}
@@ -241,7 +275,11 @@ export function HorizontalRulerPicker({
       {/* Preset Chips Row */}
       {presets && presets.length > 0 ? (
         <View style={styles.presetsWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsContent}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.presetsContent}
+          >
             {presets.map((p) => {
               const active = Math.abs(value - p) < 0.25;
               return (
@@ -250,7 +288,12 @@ export function HorizontalRulerPicker({
                   onPress={() => selectPreset(p)}
                   style={[styles.presetChip, active && styles.presetChipActive]}
                 >
-                  <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
+                  <Text
+                    style={[
+                      styles.presetChipText,
+                      active && styles.presetChipTextActive,
+                    ]}
+                  >
                     {p}
                   </Text>
                 </Pressable>
@@ -265,81 +308,81 @@ export function HorizontalRulerPicker({
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
-    backgroundColor: '#131926',
+    width: "100%",
+    backgroundColor: "#131926",
     borderWidth: 1.5,
-    borderColor: '#202A3C',
+    borderColor: "#202A3C",
     borderRadius: 22,
     paddingTop: 18,
     paddingBottom: 14,
     marginVertical: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 4,
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     marginBottom: 10,
   },
   headerTitle: {
-    color: '#94A3B8',
+    color: "#94A3B8",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.8,
   },
   valueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 18,
     marginBottom: 8,
   },
   valueCenter: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
     gap: 5,
   },
   valueNumber: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 48,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: -1,
   },
   valueUnit: {
-    color: '#38BDF8',
+    color: "#38BDF8",
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   stepBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#1A2332',
+    backgroundColor: "#1A2332",
     borderWidth: 1,
-    borderColor: '#2A364F',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#2A364F",
+    alignItems: "center",
+    justifyContent: "center",
   },
   stepBtnPressed: {
     opacity: 0.7,
-    backgroundColor: '#233047',
+    backgroundColor: "#233047",
   },
   rulerViewport: {
-    width: '100%',
+    width: "100%",
     height: 78,
-    position: 'relative',
+    position: "relative",
     marginTop: 4,
     marginBottom: 6,
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   tickColumn: {
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    alignItems: "center",
+    justifyContent: "flex-start",
     height: 72,
   },
   tickLine: {
@@ -348,34 +391,38 @@ const styles = StyleSheet.create({
   tickMajor: {
     width: 2.2,
     height: 34,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: "#E2E8F0",
   },
   tickMid: {
     width: 1.8,
     height: 22,
-    backgroundColor: '#94A3B8',
+    backgroundColor: "#94A3B8",
   },
   tickMinor: {
     width: 1.2,
     height: 14,
-    backgroundColor: '#334155',
+    backgroundColor: "#334155",
   },
   tickLabel: {
-    color: '#94A3B8',
+    position: "absolute",
+    width: 44,
+    left: -15,
+    top: 38,
+    color: "#94A3B8",
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   tickLabelPlaceholder: {
     height: 18,
   },
   needleWrapper: {
-    position: 'absolute',
-    left: '50%',
+    position: "absolute",
+    left: "50%",
     marginLeft: -1.75,
     top: 0,
-    alignItems: 'center',
+    alignItems: "center",
     zIndex: 10,
   },
   needleDiamond: {
@@ -384,22 +431,22 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderRightWidth: 4,
     borderBottomWidth: 5,
-    borderStyle: 'solid',
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
+    borderStyle: "solid",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
     marginBottom: 1,
   },
   needleLine: {
     width: 3.5,
     height: 40,
     borderRadius: 2,
-    shadowColor: '#38BDF8',
+    shadowColor: "#38BDF8",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.9,
     shadowRadius: 6,
   },
   fadeLeft: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
@@ -407,7 +454,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   fadeRight: {
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
     bottom: 0,
@@ -415,7 +462,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   presetsWrapper: {
-    width: '100%',
+    width: "100%",
     paddingTop: 8,
     paddingHorizontal: 8,
   },
@@ -424,24 +471,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   presetChip: {
-    backgroundColor: '#1A2332',
+    backgroundColor: "#1A2332",
     borderWidth: 1,
-    borderColor: '#263449',
+    borderColor: "#263449",
     paddingVertical: 5,
     paddingHorizontal: 12,
     borderRadius: 8,
   },
   presetChipActive: {
-    backgroundColor: '#1E3A5F',
-    borderColor: '#38BDF8',
+    backgroundColor: "#1E3A5F",
+    borderColor: "#38BDF8",
   },
   presetChipText: {
-    color: '#94A3B8',
+    color: "#94A3B8",
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   presetChipTextActive: {
-    color: '#38BDF8',
-    fontWeight: '900',
+    color: "#38BDF8",
+    fontWeight: "900",
   },
 });

@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { type WorkoutHistoryItem } from '@/lib/effort';
-import { useI18n } from '@/lib/i18n';
-import { localDateKey } from '@/lib/units';
+import { Text } from "@/components/AppTypography";
+import React, { useMemo } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { type WorkoutHistoryItem } from "@/lib/effort";
+import { useI18n } from "@/lib/i18n";
+import { localDateKey } from "@/lib/units";
+import { useTodayKey } from "@/hooks/useTodayKey";
 
 interface ActivityHeatmapProps {
   workoutsHistory?: WorkoutHistoryItem[];
@@ -15,8 +17,9 @@ export function ActivityHeatmap({
   weeks = 18,
   title,
 }: ActivityHeatmapProps) {
-  const { locale } = useI18n();
+  const { t } = useI18n();
   const daysPerWeek = 7;
+  const todayKey = useTodayKey();
 
   const activityMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -52,23 +55,22 @@ export function ActivityHeatmap({
       cols.push(col);
     }
     return cols;
-  }, [activityMap, weeks]);
+  }, [activityMap, weeks, todayKey]);
 
   const getColor = (lvl: number) => {
     switch (lvl) {
       case 3:
-        return '#38BDF8';
+        return "#38BDF8";
       case 2:
-        return '#0284C7';
+        return "#0284C7";
       case 1:
-        return '#0369A1';
+        return "#0369A1";
       default:
-        return '#131C2D';
+        return "#131C2D";
     }
   };
 
-  const defaultTitle =
-    locale === 'vi' ? 'NHẬT KÝ HOẠT ĐỘNG TẬP LUYỆN' : 'WORKOUT ACTIVITY MATRIX';
+  const defaultTitle = t.stats.activityMatrixTitle;
 
   return (
     <View style={styles.card}>
@@ -76,14 +78,14 @@ export function ActivityHeatmap({
         <Text style={styles.title}>{title || defaultTitle}</Text>
         <View style={styles.legendRow}>
           <Text style={styles.legendText}>
-            {locale === 'vi' ? 'Ít' : 'Less'}
+            {t.stats.less}
           </Text>
-          <View style={[styles.miniDot, { backgroundColor: '#131C2D' }]} />
-          <View style={[styles.miniDot, { backgroundColor: '#0369A1' }]} />
-          <View style={[styles.miniDot, { backgroundColor: '#0284C7' }]} />
-          <View style={[styles.miniDot, { backgroundColor: '#38BDF8' }]} />
+          <View style={[styles.miniDot, { backgroundColor: "#131C2D" }]} />
+          <View style={[styles.miniDot, { backgroundColor: "#0369A1" }]} />
+          <View style={[styles.miniDot, { backgroundColor: "#0284C7" }]} />
+          <View style={[styles.miniDot, { backgroundColor: "#38BDF8" }]} />
           <Text style={styles.legendText}>
-            {locale === 'vi' ? 'Nhiều' : 'More'}
+            {t.stats.more}
           </Text>
         </View>
       </View>
@@ -112,34 +114,36 @@ export function ActivityHeatmap({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#111724',
+    backgroundColor: "#111724",
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: "#1E293B",
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   title: {
-    color: '#FFF',
+    color: "#FFF",
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.6,
   },
   legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   legendText: {
-    color: '#64748B',
+    color: "#94A3B8",
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   miniDot: {
     width: 8,
@@ -150,11 +154,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   grid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 4,
   },
   col: {
-    flexDirection: 'column',
+    flexDirection: "column",
     gap: 4,
   },
   cell: {

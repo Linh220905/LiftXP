@@ -1,31 +1,62 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
-import Svg, { Path, G, Defs, ClipPath } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
-import { Feather } from '@expo/vector-icons';
-import { useColors } from '@/hooks/useColors';
+import { Text } from "@/components/AppTypography";
+import React, { useState } from "react";
+import { Platform, StyleSheet, View, Pressable } from "react-native";
+import Svg, { Path, G, Defs, ClipPath } from "react-native-svg";
+import * as Haptics from "expo-haptics";
+import { Feather } from "@expo/vector-icons";
+import { useColors } from "@/hooks/useColors";
 
-export type MuscleGroup = 'Chest' | 'Shoulders' | 'Arms' | 'Abs' | 'Quads' | 'Back' | 'Glutes' | 'Hamstrings' | 'Calves';
+export type MuscleGroup =
+  | "Chest"
+  | "Shoulders"
+  | "Arms"
+  | "Abs"
+  | "Quads"
+  | "Back"
+  | "Glutes"
+  | "Hamstrings"
+  | "Calves";
 
 interface BodyMusclePickerProps {
   selectedMuscles?: string[];
   onToggleMuscle?: (muscle: MuscleGroup) => void;
 }
 
-export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyMusclePickerProps) {
+export function BodyMusclePicker({
+  selectedMuscles = [],
+  onToggleMuscle,
+}: BodyMusclePickerProps) {
   const colors = useColors();
-  const [viewMode, setViewMode] = useState<'front' | 'back'>('front');
+  const [viewMode, setViewMode] = useState<"front" | "back">("front");
+
+  const isWeb = Platform.OS === "web";
 
   const handlePress = (muscle: MuscleGroup) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (typeof onToggleMuscle === 'function') {
+    if (typeof onToggleMuscle === "function") {
       onToggleMuscle(muscle);
     }
   };
 
-  const isSelected = (muscle: MuscleGroup) => (selectedMuscles || []).includes(muscle);
-  const getFill = (muscle: MuscleGroup) => (isSelected(muscle) ? '#3B82F6' : '#1E2533');
-  const getStroke = (muscle: MuscleGroup) => (isSelected(muscle) ? '#FFFFFF' : '#2D3748');
+  const getPathPressProps = (muscle: MuscleGroup) => {
+    if (isWeb) {
+      return {
+        onPress: null,
+        onClick: () => handlePress(muscle),
+        cursor: "pointer",
+      } as any;
+    }
+    return {
+      onPress: () => handlePress(muscle),
+    };
+  };
+
+  const isSelected = (muscle: MuscleGroup) =>
+    (selectedMuscles || []).includes(muscle);
+  const getFill = (muscle: MuscleGroup) =>
+    isSelected(muscle) ? "#3B82F6" : "#1E2533";
+  const getStroke = (muscle: MuscleGroup) =>
+    isSelected(muscle) ? "#FFFFFF" : "#2D3748";
 
   return (
     <View style={styles.container}>
@@ -34,22 +65,48 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
         <Pressable
           onPress={() => {
             void Haptics.selectionAsync();
-            setViewMode('front');
+            setViewMode("front");
           }}
-          style={[styles.switchBtn, viewMode === 'front' && { backgroundColor: colors.card }]}
+          style={[
+            styles.switchBtn,
+            viewMode === "front" && { backgroundColor: colors.card },
+          ]}
         >
-          <Text style={[styles.switchText, { color: viewMode === 'front' ? colors.foreground : colors.mutedForeground }]}>
+          <Text
+            style={[
+              styles.switchText,
+              {
+                color:
+                  viewMode === "front"
+                    ? colors.foreground
+                    : colors.mutedForeground,
+              },
+            ]}
+          >
             FRONT VIEW
           </Text>
         </Pressable>
         <Pressable
           onPress={() => {
             void Haptics.selectionAsync();
-            setViewMode('back');
+            setViewMode("back");
           }}
-          style={[styles.switchBtn, viewMode === 'back' && { backgroundColor: colors.card }]}
+          style={[
+            styles.switchBtn,
+            viewMode === "back" && { backgroundColor: colors.card },
+          ]}
         >
-          <Text style={[styles.switchText, { color: viewMode === 'back' ? colors.foreground : colors.mutedForeground }]}>
+          <Text
+            style={[
+              styles.switchText,
+              {
+                color:
+                  viewMode === "back"
+                    ? colors.foreground
+                    : colors.mutedForeground,
+              },
+            ]}
+          >
             BACK VIEW
           </Text>
         </Pressable>
@@ -57,7 +114,7 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
 
       {/* SVG Canonical Mannequin Stage */}
       <View style={styles.svgWrapper}>
-        {viewMode === 'front' ? (
+        {viewMode === "front" ? (
           <Svg width="220" height="380" viewBox="31 89 367 784">
             <Defs>
               <ClipPath id="clip_bmp_front">
@@ -74,139 +131,139 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
               {/* Shoulders */}
               <Path
                 d="M169.8,273.0 Q169.8,272.3 165.4,271.2 Q161.0,270.0 154.0,271.0 Q147.0,271.9 145.9,271.0 Q144.8,270.1 146.8,269.3 Q148.8,268.6 148.4,267.7 Q148.0,266.7 142.5,266.9 Q137.0,267.1 129.0,269.7 Q121.0,272.4 116.0,275.7 Q111.0,279.1 106.2,285.5 Q101.4,292.0 99.7,299.5 Q98.0,307.0 98.5,318.5 Q99.1,330.0 100.5,330.7 Q101.9,331.5 111.0,328.1 Q120.0,324.7 123.0,322.8 Q126.0,320.9 129.3,317.5 Q132.7,314.0 142.5,300.0 Q152.3,286.1 155.7,283.1 Q159.0,280.1 164.4,276.9 Q169.8,273.7 169.8,273.0Z"
-                fill={getFill('Shoulders')}
-                stroke={getStroke('Shoulders')}
+                fill={getFill("Shoulders")}
+                stroke={getStroke("Shoulders")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Shoulders')}
+                {...getPathPressProps("Shoulders")}
               />
               <Path
                 d="M327.3,299.5 Q324.6,289.0 321.8,285.5 Q319.0,282.0 310.5,276.2 Q302.0,270.3 296.0,268.7 Q290.0,267.1 284.6,267.2 Q279.2,267.4 279.2,268.0 Q279.2,268.6 281.5,269.3 Q283.8,270.1 283.4,271.2 Q283.0,272.3 278.0,271.1 Q273.0,270.0 266.5,270.7 Q260.0,271.3 258.9,272.2 Q257.8,273.0 259.3,274.5 Q260.8,276.0 260.4,276.9 Q260.0,277.8 255.5,276.0 Q251.0,274.1 243.0,274.0 Q255.5,276.0 260.0,277.8 Q264.0,277.3 269.5,281.3 Q275.0,285.3 279.3,291.1 Q283.7,297.0 283.7,300.9 Q284.1,299.8 289.9,305.9 Q295.7,312.0 298.9,316.8 Q302.1,321.7 314.5,326.6 Q326.9,331.5 328.4,327.3 Q329.9,323.0 330.0,316.5 Q330.0,310.0 327.3,299.5Z"
-                fill={getFill('Shoulders')}
-                stroke={getStroke('Shoulders')}
+                fill={getFill("Shoulders")}
+                stroke={getStroke("Shoulders")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Shoulders')}
+                {...getPathPressProps("Shoulders")}
               />
 
               {/* Chest */}
               <Path
                 d="M142.6,306.0 Q133.1,321.0 133.6,322.5 Q134.1,323.9 137.0,325.3 Q140.0,326.7 151.0,327.9 Q162.0,329.1 185.5,334.3 Q209.0,339.6 210.5,335.3 Q212.0,331.0 212.0,313.0 Q212.0,295.0 211.1,290.0 Q210.2,285.0 207.6,281.7 Q205.0,278.3 199.0,276.2 Q193.0,274.1 185.5,274.1 Q178.0,274.1 172.5,276.2 Q167.0,278.4 159.5,284.7 Q152.1,291.0 142.6,306.0Z"
-                fill={getFill('Chest')}
-                stroke={getStroke('Chest')}
+                fill={getFill("Chest")}
+                stroke={getStroke("Chest")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Chest')}
+                {...getPathPressProps("Chest")}
               />
               <Path
                 d="M243.0,274.0 Q235.0,274.0 229.0,276.2 Q223.0,278.4 220.7,280.2 Q218.4,282.0 217.2,286.0 Q216.1,290.0 215.5,306.0 Q215.0,322.0 215.7,329.5 Q216.4,337.0 217.7,338.3 Q219.0,339.6 221.0,339.8 Q223.0,339.9 234.0,336.5 Q245.0,333.1 266.0,329.8 Q287.0,326.6 289.0,324.8 Q290.9,323.0 289.9,320.5 Q288.8,318.0 289.7,316.0 Q290.6,314.0 287.0,308.0 Q283.4,302.0 283.7,300.9 Q279.3,291.1 275.0,285.3 Q269.5,281.3 264.0,277.3 Q260.0,277.8 255.5,276.0 Q251.0,274.1 243.0,274.0Z"
-                fill={getFill('Chest')}
-                stroke={getStroke('Chest')}
+                fill={getFill("Chest")}
+                stroke={getStroke("Chest")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Chest')}
+                {...getPathPressProps("Chest")}
               />
               <Path
                 d="M137.0,325.3 Q132.5,332.0 137.5,340.0 Q142.5,348.0 157.0,358.0 Q171.5,368.0 196.5,364.5 Q209.0,361.0 210.0,356.5 Q211.0,352.0 210.5,335.3 Q185.5,334.3 162.0,329.1 Q151.0,327.9 137.0,325.3Z"
-                fill={getFill('Chest')}
-                stroke={getStroke('Chest')}
+                fill={getFill("Chest")}
+                stroke={getStroke("Chest")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Chest')}
+                {...getPathPressProps("Chest")}
               />
               <Path
                 d="M217.7,338.3 Q217.5,352.0 218.5,356.5 Q219.5,361.0 232.0,364.5 Q257.0,368.0 271.5,358.0 Q286.0,348.0 291.0,340.0 Q296.0,332.0 289.0,324.8 Q266.0,329.8 245.0,333.1 Q234.0,336.5 221.0,339.8 Q219.0,339.6 217.7,338.3Z"
-                fill={getFill('Chest')}
-                stroke={getStroke('Chest')}
+                fill={getFill("Chest")}
+                stroke={getStroke("Chest")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Chest')}
+                {...getPathPressProps("Chest")}
               />
 
               {/* Arms */}
               <Path
                 d="M100.5,330.7 Q97.0,340.0 95.0,352.0 Q93.0,364.0 93.3,370.0 Q93.6,376.0 97.0,381.0 Q100.4,386.0 108.2,382.5 Q116.0,379.0 121.5,372.0 Q127.0,365.0 128.0,356.0 Q129.0,347.0 127.0,338.0 Q125.0,329.0 123.0,322.8 Q120.0,324.7 111.0,328.1 Q101.9,331.5 100.5,330.7Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
               <Path
                 d="M328.4,327.3 Q330.0,336.0 332.0,348.0 Q334.0,360.0 333.7,366.0 Q333.4,372.0 330.0,377.0 Q326.6,382.0 318.8,378.5 Q311.0,375.0 305.5,368.0 Q300.0,361.0 299.0,352.0 Q298.0,343.0 300.0,334.0 Q302.0,325.0 304.0,318.8 Q316.4,323.7 328.4,327.3Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
               <Path
                 d="M93.1,402.1 Q91.0,400.2 87.7,403.6 Q84.4,407.0 81.9,414.5 Q79.3,422.0 78.2,430.5 Q77.1,439.0 77.0,447.0 Q76.9,455.0 75.7,461.0 Q74.4,467.0 75.7,468.8 Q77.0,470.6 79.0,470.3 Q81.0,469.9 82.8,468.0 Q84.7,466.0 87.5,460.1 L115.3,438.0 Q117.0,431.0 117.0,421.0 Q117.0,411.0 111.0,406.0 Q105.0,401.0 98.0,400.0 L93.1,402.1Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
               <Path
                 d="M333.9,402.1 Q336.0,400.2 339.3,403.6 Q342.6,407.0 345.1,414.5 Q347.7,422.0 348.8,430.5 Q349.9,439.0 350.0,447.0 Q350.1,455.0 351.3,461.0 Q352.6,467.0 351.3,468.8 Q350.0,470.6 348.0,470.3 Q346.0,469.9 344.2,468.0 Q342.3,466.0 339.5,460.1 L311.7,438.0 Q310.0,431.0 310.0,421.0 Q310.0,411.0 316.0,406.0 Q322.0,401.0 329.0,400.0 L333.9,402.1Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
 
               {/* Abs */}
               <Path
                 d="M178.0,378.0 Q168.0,378.0 162.0,388.0 Q156.0,398.0 156.0,410.0 Q156.0,422.0 164.0,430.0 Q172.0,438.0 186.0,438.0 Q200.0,438.0 208.0,434.0 Q212.0,430.0 212.0,416.0 Q212.0,398.0 208.0,388.0 Q200.0,378.0 178.0,378.0Z"
-                fill={getFill('Abs')}
-                stroke={getStroke('Abs')}
+                fill={getFill("Abs")}
+                stroke={getStroke("Abs")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Abs')}
+                {...getPathPressProps("Abs")}
               />
               <Path
                 d="M250.0,378.0 Q260.0,378.0 266.0,388.0 Q272.0,398.0 272.0,410.0 Q272.0,422.0 264.0,430.0 Q256.0,438.0 242.0,438.0 Q228.0,438.0 220.0,434.0 Q216.0,430.0 216.0,416.0 Q216.0,398.0 220.0,388.0 Q228.0,378.0 250.0,378.0Z"
-                fill={getFill('Abs')}
-                stroke={getStroke('Abs')}
+                fill={getFill("Abs")}
+                stroke={getStroke("Abs")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Abs')}
+                {...getPathPressProps("Abs")}
               />
               <Path
                 d="M164.0,434.0 Q158.0,442.0 158.0,458.0 Q158.0,474.0 166.0,486.0 Q174.0,494.0 190.0,496.0 Q206.0,496.0 212.0,488.0 Q214.0,482.0 214.0,466.0 Q214.0,446.0 210.0,438.0 Q196.0,438.0 164.0,434.0Z"
-                fill={getFill('Abs')}
-                stroke={getStroke('Abs')}
+                fill={getFill("Abs")}
+                stroke={getStroke("Abs")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Abs')}
+                {...getPathPressProps("Abs")}
               />
               <Path
                 d="M264.0,434.0 Q270.0,442.0 270.0,458.0 Q270.0,474.0 262.0,486.0 Q254.0,494.0 238.0,496.0 Q222.0,496.0 216.0,488.0 Q214.0,482.0 214.0,466.0 Q214.0,446.0 218.0,438.0 Q232.0,438.0 264.0,434.0Z"
-                fill={getFill('Abs')}
-                stroke={getStroke('Abs')}
+                fill={getFill("Abs")}
+                stroke={getStroke("Abs")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Abs')}
+                {...getPathPressProps("Abs")}
               />
 
               {/* Quads */}
               <Path
                 d="M140.1,604.0 Q143.1,626.5 148.2,656.5 Q150.4,664.0 152.2,665.4 Q154.0,666.8 157.0,664.9 Q159.9,663.0 160.9,660.5 Q161.9,658.0 162.3,655.0 Q162.6,652.0 160.9,644.7 Q159.2,637.5 163.1,642.4 Q167.1,647.3 170.0,646.0 Q173.0,644.7 175.3,641.8 Q177.6,639.0 181.1,627.0 Q184.6,615.0 188.7,597.0 Q192.7,579.0 193.3,576.0 Q193.8,573.0 193.5,565.0 Q193.1,557.0 192.0,551.5 Q190.8,546.0 183.0,537.0 Q175.2,528.0 167.0,528.0 Q158.8,528.0 152.2,536.0 Q145.7,544.0 142.9,560.5 Q140.0,577.0 140.1,604.0Z"
-                fill={getFill('Quads')}
-                stroke={getStroke('Quads')}
+                fill={getFill("Quads")}
+                stroke={getStroke("Quads")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Quads')}
+                {...getPathPressProps("Quads")}
               />
               <Path
                 d="M287.9,604.0 Q284.9,626.5 279.8,656.5 Q277.6,664.0 275.8,665.4 Q274.0,666.8 271.0,664.9 Q268.1,663.0 267.1,660.5 Q266.1,658.0 265.7,655.0 Q265.4,652.0 267.1,644.7 Q268.8,637.5 264.9,642.4 Q260.9,647.3 258.0,646.0 Q255.0,644.7 252.7,641.8 Q250.4,639.0 246.9,627.0 Q243.4,615.0 239.3,597.0 Q235.3,579.0 234.7,576.0 Q234.2,573.0 234.5,565.0 Q234.9,557.0 236.0,551.5 Q237.2,546.0 245.0,537.0 Q252.8,528.0 261.0,528.0 Q269.2,528.0 275.8,536.0 Q282.3,544.0 285.1,560.5 Q288.0,577.0 287.9,604.0Z"
-                fill={getFill('Quads')}
-                stroke={getStroke('Quads')}
+                fill={getFill("Quads")}
+                stroke={getStroke("Quads")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Quads')}
+                {...getPathPressProps("Quads")}
               />
 
               {/* Calves */}
               <Path
                 d="M151.5,675.1 Q149.0,674.2 147.5,675.6 Q146.1,677.0 144.6,686.0 Q143.1,695.0 143.0,709.0 Q143.0,723.0 146.0,745.0 L172.6,757.5 L173.0,719.5 Q174.1,711.0 175.2,706.5 Q176.3,702.0 175.2,698.0 Q174.0,694.0 169.5,690.0 Q165.0,686.0 159.0,681.0 L151.5,675.1Z"
-                fill={getFill('Calves')}
-                stroke={getStroke('Calves')}
+                fill={getFill("Calves")}
+                stroke={getStroke("Calves")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Calves')}
+                {...getPathPressProps("Calves")}
               />
               <Path
                 d="M276.5,675.1 Q279.0,674.2 280.5,675.6 Q281.9,677.0 283.4,686.0 Q284.9,695.0 285.0,709.0 Q285.0,723.0 282.0,745.0 L255.4,757.5 L255.0,719.5 Q253.9,711.0 252.8,706.5 Q251.7,702.0 252.8,698.0 Q254.0,694.0 258.5,690.0 Q263.0,686.0 269.0,681.0 L276.5,675.1Z"
-                fill={getFill('Calves')}
-                stroke={getStroke('Calves')}
+                fill={getFill("Calves")}
+                stroke={getStroke("Calves")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Calves')}
+                {...getPathPressProps("Calves")}
               />
             </G>
           </Svg>
@@ -227,95 +284,95 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
               {/* Back / Traps / Lats */}
               <Path
                 d="M213.5,246 Q194,248 180,252 Q164,258 152,268 Q162,279 170,287 Q188,272 213.5,270 Z"
-                fill={getFill('Back')}
-                stroke={getStroke('Back')}
+                fill={getFill("Back")}
+                stroke={getStroke("Back")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Back')}
+                {...getPathPressProps("Back")}
               />
               <Path
                 d="M214.5,246 Q234,248 248,252 Q264,258 276,268 Q266,279 258,287 Q240,272 214.5,270 Z"
-                fill={getFill('Back')}
-                stroke={getStroke('Back')}
+                fill={getFill("Back")}
+                stroke={getStroke("Back")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Back')}
+                {...getPathPressProps("Back")}
               />
               <Path
                 d="M166,293 Q144,312 138,348 Q134,386 142,420 Q152,442 165,456 Q178,443 189,428 Q202,392 208,356 Q188,330 166,293 Z"
-                fill={getFill('Back')}
-                stroke={getStroke('Back')}
+                fill={getFill("Back")}
+                stroke={getStroke("Back")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Back')}
+                {...getPathPressProps("Back")}
               />
               <Path
                 d="M262,293 Q284,312 290,348 Q294,386 286,420 Q276,442 263,456 Q250,443 239,428 Q226,392 220,356 Q240,330 262,293 Z"
-                fill={getFill('Back')}
-                stroke={getStroke('Back')}
+                fill={getFill("Back")}
+                stroke={getStroke("Back")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Back')}
+                {...getPathPressProps("Back")}
               />
 
               {/* Arms (Back view) */}
               <Path
                 d="M104,296 Q96,320 95,350 Q96,376 104,392 Q112,388 120,378 Q125,364 126,346 Q122,320 114,302 Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
               <Path
                 d="M324,296 Q332,320 333,350 Q332,376 324,392 Q316,388 308,378 Q303,364 302,346 Q306,320 314,302 Z"
-                fill={getFill('Arms')}
-                stroke={getStroke('Arms')}
+                fill={getFill("Arms")}
+                stroke={getStroke("Arms")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Arms')}
+                {...getPathPressProps("Arms")}
               />
 
               {/* Glutes */}
               <Path
                 d="M166,464 Q154,490 152,522 Q152,548 162,568 Q174,582 188,584 Q204,582 212,564 Q214,540 214,500 Q208,474 192,464 Z"
-                fill={getFill('Glutes')}
-                stroke={getStroke('Glutes')}
+                fill={getFill("Glutes")}
+                stroke={getStroke("Glutes")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Glutes')}
+                {...getPathPressProps("Glutes")}
               />
               <Path
                 d="M262,464 Q274,490 276,522 Q276,548 266,568 Q254,582 240,584 Q224,582 216,564 Q214,540 214,500 Q220,474 236,464 Z"
-                fill={getFill('Glutes')}
-                stroke={getStroke('Glutes')}
+                fill={getFill("Glutes")}
+                stroke={getStroke("Glutes")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Glutes')}
+                {...getPathPressProps("Glutes")}
               />
 
               {/* Hamstrings */}
               <Path
                 d="M162,592 Q154,618 152,648 Q152,674 162,694 Q172,704 184,704 Q196,700 204,682 Q208,660 208,628 Q204,604 190,592 Z"
-                fill={getFill('Hamstrings')}
-                stroke={getStroke('Hamstrings')}
+                fill={getFill("Hamstrings")}
+                stroke={getStroke("Hamstrings")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Hamstrings')}
+                {...getPathPressProps("Hamstrings")}
               />
               <Path
                 d="M266,592 Q274,618 276,648 Q276,674 266,694 Q256,704 244,704 Q232,700 224,682 Q220,660 220,628 Q224,604 238,592 Z"
-                fill={getFill('Hamstrings')}
-                stroke={getStroke('Hamstrings')}
+                fill={getFill("Hamstrings")}
+                stroke={getStroke("Hamstrings")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Hamstrings')}
+                {...getPathPressProps("Hamstrings")}
               />
 
               {/* Calves (Back view) */}
               <Path
                 d="M152,714 Q146,734 146,758 Q148,782 156,798 Q166,808 176,808 Q186,804 192,788 Q196,770 196,746 Q192,724 180,714 Z"
-                fill={getFill('Calves')}
-                stroke={getStroke('Calves')}
+                fill={getFill("Calves")}
+                stroke={getStroke("Calves")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Calves')}
+                {...getPathPressProps("Calves")}
               />
               <Path
                 d="M276,714 Q282,734 282,758 Q280,782 272,798 Q262,808 252,808 Q242,804 236,788 Q232,770 232,746 Q236,724 248,714 Z"
-                fill={getFill('Calves')}
-                stroke={getStroke('Calves')}
+                fill={getFill("Calves")}
+                stroke={getStroke("Calves")}
                 strokeWidth="1.2"
-                onPress={() => handlePress('Calves')}
+                {...getPathPressProps("Calves")}
               />
             </G>
           </Svg>
@@ -324,9 +381,15 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
 
       {/* Quick Select Chips */}
       <View style={styles.chipsWrap}>
-        {(viewMode === 'front'
-          ? (['Chest', 'Shoulders', 'Arms', 'Abs', 'Quads'] as MuscleGroup[])
-          : (['Back', 'Glutes', 'Hamstrings', 'Calves', 'Arms'] as MuscleGroup[])
+        {(viewMode === "front"
+          ? (["Chest", "Shoulders", "Arms", "Abs", "Quads"] as MuscleGroup[])
+          : ([
+              "Back",
+              "Glutes",
+              "Hamstrings",
+              "Calves",
+              "Arms",
+            ] as MuscleGroup[])
         ).map((muscle) => {
           const active = isSelected(muscle);
           return (
@@ -336,20 +399,22 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
               style={[
                 styles.chip,
                 {
-                  backgroundColor: active ? '#3B82F6' : colors.card,
-                  borderColor: active ? '#60A5FA' : colors.border,
+                  backgroundColor: active ? "#3B82F6" : colors.card,
+                  borderColor: active ? "#60A5FA" : colors.border,
                 },
               ]}
             >
               <Text
                 style={[
                   styles.chipText,
-                  { color: active ? '#FFFFFF' : colors.foreground },
+                  { color: active ? "#FFFFFF" : colors.foreground },
                 ]}
               >
                 {muscle}
               </Text>
-              {active ? <Feather name="check" size={13} color="#FFFFFF" /> : null}
+              {active ? (
+                <Feather name="check" size={13} color="#FFFFFF" />
+              ) : null}
             </Pressable>
           );
         })}
@@ -360,12 +425,12 @@ export function BodyMusclePicker({ selectedMuscles = [], onToggleMuscle }: BodyM
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    width: '100%',
+    alignItems: "center",
+    width: "100%",
     paddingVertical: 6,
   },
   switchRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 4,
     borderRadius: 12,
     marginBottom: 8,
@@ -377,25 +442,25 @@ const styles = StyleSheet.create({
   },
   switchText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.8,
   },
   svgWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginVertical: 2,
   },
   chipsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: 8,
     marginTop: 10,
     maxWidth: 320,
   },
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
     borderWidth: 1,
     borderRadius: 18,
@@ -404,6 +469,6 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

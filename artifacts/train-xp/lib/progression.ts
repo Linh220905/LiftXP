@@ -1,6 +1,7 @@
 // Progression engine for TrainXP: Linear, Greyskull LP, Double Progression, and 1RM calculators.
 
-export type ProgressionPolicy = 'off' | 'linear' | 'greyskull' | 'double' | 'time';
+export type ProgressionPolicy =
+  "off" | "linear" | "greyskull" | "double" | "time";
 
 export interface ProgressionConfig {
   policy: ProgressionPolicy;
@@ -27,10 +28,17 @@ export interface Prescription {
   isDeload?: boolean;
 }
 
-export const HEAVY_BODY_PARTS = ['legs', 'quadriceps', 'hamstrings', 'glutes', 'back', 'chest'];
+export const HEAVY_BODY_PARTS = [
+  "legs",
+  "quadriceps",
+  "hamstrings",
+  "glutes",
+  "back",
+  "chest",
+];
 
 export function getDefaultIncrement(category: string): number {
-  const cat = (category || '').toLowerCase();
+  const cat = (category || "").toLowerCase();
   if (HEAVY_BODY_PARTS.some((p) => cat.includes(p))) {
     return 5.0; // 5kg for heavy compound lifts
   }
@@ -43,7 +51,13 @@ export function getDefaultIncrement(category: string): number {
  * For single rep: 1RM = Weight
  */
 export function calculate1RM(weightKg: number, reps: number): number {
-  if (!Number.isFinite(weightKg) || !Number.isFinite(reps) || weightKg <= 0 || reps <= 0) return 0;
+  if (
+    !Number.isFinite(weightKg) ||
+    !Number.isFinite(reps) ||
+    weightKg <= 0 ||
+    reps <= 0
+  )
+    return 0;
   // Epley/Brzycki estimates are not meaningful for very high-rep sets.
   if (reps > 36) return 0;
   if (reps === 1) return weightKg;
@@ -61,23 +75,28 @@ export function calculateNextPrescription(
   lastWeight: number,
   lastSets: SetHistoryEntry[],
   config: ProgressionConfig,
-  category = 'general'
+  category = "general",
 ): Prescription {
   const inc = config.incrementKg ?? getDefaultIncrement(category);
   const policy = config.policy;
 
-  if (policy === 'off' || lastSets.length === 0) {
+  if (
+    policy === "off" ||
+    lastSets.length === 0 ||
+    !Number.isFinite(lastWeight) ||
+    lastWeight <= 0
+  ) {
     return {
       weightKg: lastWeight,
       targetReps: lastSets[0]?.targetReps ?? 8,
-      reason: 'Targets stay at current level.',
+      reason: "Targets stay at current level.",
     };
   }
 
   const allDone = lastSets.every((s) => s.done && s.reps >= s.targetReps);
   const anyFailed = lastSets.some((s) => !s.done || s.reps < s.targetReps);
 
-  if (policy === 'linear') {
+  if (policy === "linear") {
     if (allDone) {
       return {
         weightKg: lastWeight + inc,
@@ -89,14 +108,16 @@ export function calculateNextPrescription(
       return {
         weightKg: lastWeight,
         targetReps: lastSets[0].targetReps,
-        reason: 'Repeat current weight to master form.',
+        reason: "Repeat current weight to master form.",
       };
     }
   }
 
-  if (policy === 'greyskull') {
+  if (policy === "greyskull") {
     const lastSet = lastSets[lastSets.length - 1];
-    const initialSetsPass = lastSets.slice(0, -1).every((s) => s.done && s.reps >= s.targetReps);
+    const initialSetsPass = lastSets
+      .slice(0, -1)
+      .every((s) => s.done && s.reps >= s.targetReps);
 
     if (initialSetsPass && lastSet && lastSet.done) {
       if (lastSet.reps >= lastSet.targetReps + 4) {
@@ -117,7 +138,10 @@ export function calculateNextPrescription(
     }
 
     // Fail -> 10% Deload
-    const deloadWeight = Math.max(0, Math.round((lastWeight * 0.9) / 2.5) * 2.5);
+    const deloadWeight = Math.max(
+      0,
+      Math.round((lastWeight * 0.9) / 2.5) * 2.5,
+    );
     return {
       weightKg: deloadWeight,
       targetReps: lastSets[0].targetReps,
@@ -126,7 +150,7 @@ export function calculateNextPrescription(
     };
   }
 
-  if (policy === 'double') {
+  if (policy === "double") {
     const minR = config.minReps ?? 8;
     const maxR = config.maxReps ?? 12;
     const currentR = lastSets[0]?.targetReps ?? minR;
@@ -156,6 +180,6 @@ export function calculateNextPrescription(
   return {
     weightKg: lastWeight,
     targetReps: lastSets[0]?.targetReps ?? 8,
-    reason: 'Maintain current prescription.',
+    reason: "Maintain current prescription.",
   };
 }

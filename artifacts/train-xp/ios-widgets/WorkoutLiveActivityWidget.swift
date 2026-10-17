@@ -106,7 +106,7 @@ public struct WorkoutLiveActivityWidget: Widget {
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.gray)
                                 Spacer()
-                                Text(timerInterval: Date()...restEndTime, countsDown: true)
+                                RestCountdown(end: restEndTime)
                                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                                     .foregroundColor(neonCyan)
                             }
@@ -130,7 +130,7 @@ public struct WorkoutLiveActivityWidget: Widget {
             } compactTrailing: {
                 // Compact Trailing: Rest timer or weight
                 if context.state.isResting, let restEndTime = context.state.restEndTime {
-                    Text(timerInterval: Date()...restEndTime, countsDown: true)
+                    RestCountdown(end: restEndTime)
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundColor(neonCyan)
                         .frame(width: 44)
@@ -264,7 +264,7 @@ private struct LockScreenWorkoutBanner: View {
                             Text("THỜI GIAN NGHỈ")
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(neonCyan.opacity(0.8))
-                            Text(timerInterval: Date()...restEndTime, countsDown: true)
+                            RestCountdown(end: restEndTime)
                                 .font(.system(size: 16, weight: .heavy, design: .monospaced))
                                 .foregroundColor(.white)
                         }
@@ -318,4 +318,16 @@ private func formatWeight(_ weight: Double) -> String {
         return "\(Int(weight))"
     }
     return String(format: "%.1f", weight)
+}
+
+private struct RestCountdown: View {
+    let end: Date
+    var body: some View {
+        let now = Date()
+        if end > now {
+            Text(timerInterval: now...end, countsDown: true)
+        } else {
+            Text("00:00")
+        }
+    }
 }

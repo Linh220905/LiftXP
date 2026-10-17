@@ -1,29 +1,35 @@
-import { Platform } from 'react-native';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
-import Purchases, { type CustomerInfo, type PurchasesPackage, LOG_LEVEL } from 'react-native-purchases';
+import { Platform } from "react-native";
+import Constants, { ExecutionEnvironment } from "expo-constants";
+import Purchases, {
+  type CustomerInfo,
+  type PurchasesPackage,
+  LOG_LEVEL,
+} from "react-native-purchases";
 
 // Configuration keys - can be supplied via EXPO_PUBLIC_* env vars
-const API_KEY_APPLE = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || '';
-const API_KEY_GOOGLE = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY || '';
+const API_KEY_APPLE = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || "";
+const API_KEY_GOOGLE = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY || "";
 
-export const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-export const PRIVACY_POLICY_URL = 'https://trainxp.vercel.app/privacy';
+export const TERMS_OF_USE_URL =
+  "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+export const PRIVACY_POLICY_URL = "https://trainxp.vercel.app/privacy";
 
-export const PRO_ENTITLEMENT_ID = 'trainxp_pro';
+export const PRO_ENTITLEMENT_ID = "trainxp_pro";
 
 let isConfigured = false;
+let configuration: Promise<boolean> | null = null;
 
 export async function initPurchases(userId?: string): Promise<boolean> {
   const isExpoGo =
     Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-    (Constants as any).appOwnership === 'expo';
+    (Constants as any).appOwnership === "expo";
 
-  if (isExpoGo || (Platform.OS !== 'ios' && Platform.OS !== 'android')) {
+  if (isExpoGo || (Platform.OS !== "ios" && Platform.OS !== "android")) {
     // Native IAP stores are unavailable inside Expo Go / Web without native dev client
     return false;
   }
 
-  const apiKey = Platform.OS === 'ios' ? API_KEY_APPLE : API_KEY_GOOGLE;
+  const apiKey = Platform.OS === "ios" ? API_KEY_APPLE : API_KEY_GOOGLE;
   if (!apiKey) {
     // Graceful fallback for local development without keys
     return false;
@@ -36,6 +42,21 @@ export async function initPurchases(userId?: string): Promise<boolean> {
     return true;
   }
 
+  if (configuration) {
+    const ready = await configuration;
+    if (ready && userId) await syncPurchasesUser(userId);
+    return ready;
+  }
+  configuration = configurePurchases(apiKey, userId).finally(() => {
+    configuration = null;
+  });
+  return configuration;
+}
+
+async function configurePurchases(
+  apiKey: string,
+  userId?: string,
+): Promise<boolean> {
   try {
     if (__DEV__) {
       await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
@@ -47,12 +68,14 @@ export async function initPurchases(userId?: string): Promise<boolean> {
     isConfigured = true;
     return true;
   } catch (error) {
-    console.warn('[Purchases] Failed to configure RevenueCat:', error);
+    console.warn("[Purchases] Failed to configure RevenueCat:", error);
     return false;
   }
 }
 
-export function setupPurchasesListener(onProStatusChange: (isPro: boolean) => void): () => void {
+export function setupPurchasesListener(
+  onProStatusChange: (isPro: boolean) => void,
+): () => void {
   if (!isConfigured) {
     return () => {};
   }
@@ -69,13 +92,12 @@ export function setupPurchasesListener(onProStatusChange: (isPro: boolean) => vo
   };
 }
 
-export async function syncPurchasesUser(userId: string): Promise<void> {
-  if (!isConfigured || !userId) return;
-  try {
-    await Purchases.logIn(userId);
-  } catch (err) {
-    console.warn('[Purchases] logIn notice:', err);
-  }
+export async function syncPurchasesUser(
+  userId: string,
+): Promise<CustomerInfo | null> {
+  if (!isConfigured || !userId) return null;
+  const { customerInfo } = await Purchases.logIn(userId);
+  return customerInfo;
 }
 
 export async function logOutPurchases(): Promise<void> {
@@ -83,12 +105,12 @@ export async function logOutPurchases(): Promise<void> {
   try {
     await Purchases.logOut();
   } catch (err) {
-    console.warn('[Purchases] logOut notice:', err);
+    console.warn("[Purchases] logOut notice:", err);
   }
 }
 
 export interface PackageDisplay {
-  id: 'annual' | 'monthly' | 'weekly';
+  id: "annual" | "monthly" | "weekly";
   rcPackage?: PurchasesPackage;
   title: string;
   priceString: string;
@@ -106,38 +128,46 @@ export async function fetchOfferings(): Promise<{
   weekly: PackageDisplay;
 }> {
   const fallbackAnnual: PackageDisplay = {
-    id: 'annual',
-    title: 'Yearly Plan',
-    priceString: '—',
-    periodText: '/ year',
+    id: "annual",
+    title: "Yearly Plan",
+    priceString: "—",
+    periodText: "/ year",
     hasTrial: false,
   };
 
   const fallbackMonthly: PackageDisplay = {
-    id: 'monthly',
-    title: 'Monthly Plan',
-    priceString: '—',
-    periodText: '/ month',
+    id: "monthly",
+    title: "Monthly Plan",
+    priceString: "—",
+    periodText: "/ month",
     hasTrial: false,
   };
 
   const fallbackWeekly: PackageDisplay = {
-    id: 'weekly',
-    title: 'Weekly Plan',
-    priceString: '—',
-    periodText: '/ week',
+    id: "weekly",
+    title: "Weekly Plan",
+    priceString: "—",
+    periodText: "/ week",
     hasTrial: false,
   };
 
   if (!isConfigured) {
-    return { annual: fallbackAnnual, monthly: fallbackMonthly, weekly: fallbackWeekly };
+    return {
+      annual: fallbackAnnual,
+      monthly: fallbackMonthly,
+      weekly: fallbackWeekly,
+    };
   }
 
   try {
     const offerings = await Purchases.getOfferings();
     const current = offerings.current;
     if (!current) {
-      return { annual: fallbackAnnual, monthly: fallbackMonthly, weekly: fallbackWeekly };
+      return {
+        annual: fallbackAnnual,
+        monthly: fallbackMonthly,
+        weekly: fallbackWeekly,
+      };
     }
 
     const rcAnnual = current.annual;
@@ -147,50 +177,55 @@ export async function fetchOfferings(): Promise<{
     return {
       annual: rcAnnual
         ? {
-            id: 'annual',
+            id: "annual",
             rcPackage: rcAnnual,
-            title: rcAnnual.product.title || 'Yearly Plan',
+            title: rcAnnual.product.title || "Yearly Plan",
             priceString: rcAnnual.product.priceString,
-            periodText: '/ year',
+            periodText: "/ year",
             perMonthPrice: new Intl.NumberFormat(undefined, {
-              style: 'currency',
+              style: "currency",
               currency: rcAnnual.product.currencyCode,
             }).format(rcAnnual.product.price / 12),
-            badge: 'BEST VALUE',
-            discountPct: '75%',
+            badge: "BEST VALUE",
+
             hasTrial: false,
           }
         : fallbackAnnual,
       monthly: rcMonthly
         ? {
-            id: 'monthly',
+            id: "monthly",
             rcPackage: rcMonthly,
-            title: rcMonthly.product.title || 'Monthly Plan',
+            title: rcMonthly.product.title || "Monthly Plan",
             priceString: rcMonthly.product.priceString,
-            periodText: '/ month',
-            badge: 'FLEXIBLE',
+            periodText: "/ month",
+            badge: "FLEXIBLE",
             hasTrial: false,
           }
         : fallbackMonthly,
       weekly: rcWeekly
         ? {
-            id: 'weekly',
+            id: "weekly",
             rcPackage: rcWeekly,
-            title: rcWeekly.product.title || 'Weekly Plan',
+            title: rcWeekly.product.title || "Weekly Plan",
             priceString: rcWeekly.product.priceString,
-            periodText: '/ week',
-            badge: 'WEEKLY',
+            periodText: "/ week",
+            badge: "WEEKLY",
             hasTrial: false,
           }
         : fallbackWeekly,
     };
   } catch (error) {
-    console.warn('[Purchases] Failed to fetch offerings, using fallback:', error);
-    return { annual: fallbackAnnual, monthly: fallbackMonthly, weekly: fallbackWeekly };
+    console.warn(
+      "[Purchases] Failed to fetch offerings, using fallback:",
+      error,
+    );
+    throw error;
   }
 }
 
-export async function purchaseSubscription(pkg: PackageDisplay): Promise<boolean> {
+export async function purchaseSubscription(
+  pkg: PackageDisplay,
+): Promise<boolean> {
   if (!isConfigured || !pkg.rcPackage) return false;
 
   try {
@@ -214,18 +249,18 @@ export async function restoreSubscription(): Promise<boolean> {
     const customerInfo: CustomerInfo = await Purchases.restorePurchases();
     return Boolean(customerInfo.entitlements.active[PRO_ENTITLEMENT_ID]);
   } catch (error) {
-    console.warn('[Purchases] Restore error:', error);
+    console.warn("[Purchases] Restore error:", error);
     throw error;
   }
 }
 
-export async function checkHasProEntitlement(): Promise<boolean> {
-  if (!isConfigured) return false;
+export async function checkHasProEntitlement(): Promise<boolean | null> {
+  if (!isConfigured) return null;
 
   try {
     const customerInfo = await Purchases.getCustomerInfo();
     return Boolean(customerInfo.entitlements.active[PRO_ENTITLEMENT_ID]);
   } catch {
-    return false;
+    return null;
   }
 }

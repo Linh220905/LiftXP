@@ -63,6 +63,7 @@ public class TrainXPLiveActivity: NSObject {
         var restEnd: Date? = nil
         if let restEndStr = data["restEndTime"] as? String {
             let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             restEnd = formatter.date(from: restEndStr)
         }
 
@@ -156,6 +157,7 @@ public class TrainXPLiveActivity: NSObject {
                 var restEnd: Date? = nil
                 if let restEndStr = data["restEndTime"] as? String {
                     let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     restEnd = formatter.date(from: restEndStr)
                 }
 

@@ -8,12 +8,17 @@ export interface LoggedSetData {
   reps?: number | string;
   rir?: number;
   rpe?: number;
+  targetReps?: number;
+  isDropSet?: boolean;
+  setType?: "normal" | "warmup" | "dropset" | "failure";
   done: boolean;
   sec?: number;
 }
 
 export interface WorkoutEntryData {
   id: string;
+  supersetId?: string;
+  progression?: import("./progression").ProgressionPolicy;
   sets: LoggedSetData[];
 }
 
@@ -30,8 +35,20 @@ export interface WorkoutHistoryItem {
 /** Get numeric RIR of a set, or null if unrated */
 export function rirOf(set?: LoggedSetData | null): number | null {
   if (!set || !set.done) return null;
-  if (set.rir != null && !isNaN(Number(set.rir))) return Number(set.rir);
-  if (set.rpe != null && !isNaN(Number(set.rpe))) return 10 - Number(set.rpe);
+  if (
+    set.rir != null &&
+    Number.isFinite(Number(set.rir)) &&
+    Number(set.rir) >= 0 &&
+    Number(set.rir) <= 10
+  )
+    return Number(set.rir);
+  if (
+    set.rpe != null &&
+    Number.isFinite(Number(set.rpe)) &&
+    Number(set.rpe) >= 0 &&
+    Number(set.rpe) <= 10
+  )
+    return 10 - Number(set.rpe);
   return null;
 }
 
@@ -80,8 +97,14 @@ export function effortSummary(workouts: WorkoutHistoryItem[], days = 90) {
     doneCount,
     ratedCount,
     hardCount,
-    avgRir: ratedCount >= MIN_RATED ? Math.round((rirSum / ratedCount) * 10) / 10 : null,
-    hardPct: ratedCount >= MIN_RATED ? Math.round((hardCount / ratedCount) * 100) : null,
+    avgRir:
+      ratedCount >= MIN_RATED
+        ? Math.round((rirSum / ratedCount) * 10) / 10
+        : null,
+    hardPct:
+      ratedCount >= MIN_RATED
+        ? Math.round((hardCount / ratedCount) * 100)
+        : null,
   };
 }
 
@@ -110,7 +133,7 @@ export function effortHistogram(workouts: WorkoutHistoryItem[], days = 90) {
   });
 
   return bins.map((count, i) => ({
-    rirLabel: i === 4 ? '4+ RIR' : `${i} RIR`,
+    rirLabel: i === 4 ? "4+ RIR" : `${i} RIR`,
     count,
     pct: totalRated > 0 ? Math.round((count / totalRated) * 100) : 0,
     isHard: i <= HARD_RIR,

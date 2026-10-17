@@ -1,12 +1,37 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createClient } from "@supabase/supabase-js";
+import {
+  mergeSnapshots,
+  emptySnapshot,
+  stampChanges,
+  normalizeSnapshot,
+  type StateSnapshot,
+} from "./stateModel";
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://nmnqmpjpczvoxauyosbv.supabase.co';
+const SUPABASE_URL =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  "https://nmnqmpjpczvoxauyosbv.supabase.co";
 const SUPABASE_ANON_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tbnFtcGpwY3p2b3hhdXlvc2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3ODU5NjAsImV4cCI6MjEwNzM2MTk2MH0.D3qnHPiF8A5ttd2eqor8pl-t8gJ9TLg_duIEB7DD_K4';
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tbnFtcGpwY3p2b3hhdXlvc2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3ODU5NjAsImV4cCI6MjEwNzM2MTk2MH0.D3qnHPiF8A5ttd2eqor8pl-t8gJ9TLg_duIEB7DD_K4";
+
+const fetchWithDeadline: typeof fetch = async (input, init) => {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  const originalSignal = init?.signal;
+  if (originalSignal?.aborted) cancel();
+  originalSignal?.addEventListener("abort", cancel);
+  const timer = setTimeout(cancel, 15000);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    originalSignal?.removeEventListener("abort", cancel);
+  }
+};
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: fetchWithDeadline },
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -18,11 +43,18 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 type CloudMutation = {
   id: string;
   userId: string;
-  kind: 'profile' | 'app-state-upsert' | 'routine-upsert' | 'routine-delete' | 'workout-upsert' | 'workout-delete' | 'bodyweight-upsert';
+  kind:
+    | "profile"
+    | "app-state-upsert"
+    | "routine-upsert"
+    | "routine-delete"
+    | "workout-upsert"
+    | "workout-delete"
+    | "bodyweight-upsert";
   payload: any;
 };
 
-const CLOUD_OUTBOX_KEY = '@train-xp/cloud-outbox';
+const CLOUD_OUTBOX_KEY = "@train-xp/cloud-outbox";
 let outboxLock: Promise<void> = Promise.resolve();
 let cloudWriteLock: Promise<void> = Promise.resolve();
 
@@ -31,16 +63,24 @@ async function readOutbox(): Promise<CloudMutation[]> {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item) =>
-      item && typeof item.id === 'string' && typeof item.userId === 'string' && typeof item.kind === 'string'
-    ) as CloudMutation[] : [];
+    return Array.isArray(parsed)
+      ? (parsed.filter(
+          (item) =>
+            item &&
+            typeof item.id === "string" &&
+            typeof item.userId === "string" &&
+            typeof item.kind === "string",
+        ) as CloudMutation[])
+      : [];
   } catch {
     await AsyncStorage.removeItem(CLOUD_OUTBOX_KEY);
     return [];
   }
 }
 
-async function updateOutbox(update: (items: CloudMutation[]) => CloudMutation[]): Promise<void> {
+async function updateOutbox(
+  update: (items: CloudMutation[]) => CloudMutation[],
+): Promise<void> {
   const operation = outboxLock.then(async () => {
     const items = await readOutbox();
     await AsyncStorage.setItem(CLOUD_OUTBOX_KEY, JSON.stringify(update(items)));
@@ -53,89 +93,188 @@ async function executeCloudMutation(mutation: CloudMutation): Promise<void> {
   const { userId, kind, payload } = mutation;
   let result: any;
   switch (kind) {
-    case 'profile':
-      result = await supabase.from('profiles').upsert(payload);
+    case "profile":
+      result = await supabase.from("profiles").upsert(payload);
       break;
-    case 'app-state-upsert':
-      result = await supabase.from('user_app_state').upsert(payload);
+    case "app-state-upsert": {
+      // Optimistic compare-and-swap prevents two devices from replacing each other.
+      let incoming = normalizeSnapshot(payload.state, emptySnapshot());
+      if (!Object.keys(incoming.clocks).length)
+        incoming = stampChanges(
+          emptySnapshot(),
+          incoming,
+          Date.parse(payload.updated_at) || Date.now(),
+        );
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { data: row, error } = await supabase
+          .from("user_app_state")
+          .select("state,updated_at")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) throw error;
+        const state = row
+          ? mergeSnapshots(
+              incoming,
+              normalizeSnapshot(row.state, emptySnapshot()),
+            )
+          : incoming;
+        const updatedAt = new Date(
+          Math.max(Date.now(), row ? Date.parse(row.updated_at) + 1 : 0),
+        ).toISOString();
+        if (row) {
+          const update = await supabase
+            .from("user_app_state")
+            .update({ state, updated_at: updatedAt })
+            .eq("user_id", userId)
+            .eq("updated_at", row.updated_at)
+            .select("user_id");
+          if (update.error) throw update.error;
+          if (update.data?.length) return;
+        } else {
+          const insert = await supabase
+            .from("user_app_state")
+            .insert({ user_id: userId, state, updated_at: updatedAt });
+          if (!insert.error) return;
+          if (insert.error.code !== "23505") throw insert.error;
+        }
+      }
+      throw new Error("Cloud changed while saving; snapshot remains queued");
+    }
+    case "routine-upsert":
+      result = await supabase.from("routines").upsert(payload);
       break;
-    case 'routine-upsert':
-      result = await supabase.from('routines').upsert(payload);
+    case "routine-delete":
+      result = await supabase
+        .from("routines")
+        .delete()
+        .eq("id", payload.id)
+        .eq("user_id", userId);
       break;
-    case 'routine-delete':
-      result = await supabase.from('routines').delete().eq('id', payload.id).eq('user_id', userId);
+    case "workout-upsert":
+      result = await supabase.from("workouts").upsert(payload);
       break;
-    case 'workout-upsert':
-      result = await supabase.from('workouts').upsert(payload);
+    case "workout-delete":
+      result = await supabase
+        .from("workouts")
+        .delete()
+        .eq("id", payload.id)
+        .eq("user_id", userId);
       break;
-    case 'workout-delete':
-      result = await supabase.from('workouts').delete().eq('id', payload.id).eq('user_id', userId);
-      break;
-    case 'bodyweight-upsert': {
+    case "bodyweight-upsert": {
       const { data: existing, error: readError } = await supabase
-        .from('bodyweight_logs').select('id').eq('user_id', userId).eq('date', payload.date).maybeSingle();
+        .from("bodyweight_logs")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("date", payload.date)
+        .maybeSingle();
       if (readError) throw readError;
       result = existing?.id
-        ? await supabase.from('bodyweight_logs').update({ weight: payload.weight }).eq('id', existing.id)
-        : await supabase.from('bodyweight_logs').insert({ user_id: userId, weight: payload.weight, date: payload.date });
+        ? await supabase
+            .from("bodyweight_logs")
+            .update({ weight: payload.weight })
+            .eq("id", existing.id)
+        : await supabase.from("bodyweight_logs").insert({
+            user_id: userId,
+            weight: payload.weight,
+            date: payload.date,
+          });
       break;
     }
   }
   if (result?.error) throw result.error;
 }
 
-async function saveAndSyncMutation(userId: string, kind: CloudMutation['kind'], payload: any): Promise<void> {
+async function saveAndSyncMutation(
+  userId: string,
+  kind: CloudMutation["kind"],
+  payload: any,
+): Promise<void> {
   const mutation: CloudMutation = {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     userId,
     kind,
     payload,
   };
-  await updateOutbox((items) => [...items, mutation]);
-  try {
-    const execution = cloudWriteLock.then(() => executeCloudMutation(mutation));
-    cloudWriteLock = execution.catch(() => undefined);
-    await execution;
-    await updateOutbox((items) => items.filter((item) => item.id !== mutation.id));
-  } catch (error) {
-    console.warn('[Cloud sync] Mutation queued for retry:', kind, error);
-  }
+  await updateOutbox((items) => {
+    if (kind !== "app-state-upsert") return [...items, mutation];
+    const older = items.filter(
+      (item) => item.userId === userId && item.kind === kind,
+    );
+    const state = older.reduce(
+      (next, item) => {
+        let queued = normalizeSnapshot(item.payload?.state, emptySnapshot());
+        if (!Object.keys(queued.clocks).length)
+          queued = stampChanges(
+            emptySnapshot(),
+            queued,
+            Date.parse(item.payload?.updated_at) || 1,
+          );
+        return mergeSnapshots(next, queued);
+      },
+      normalizeSnapshot(payload.state, emptySnapshot()),
+    );
+    return [
+      ...items.filter((item) => item.userId !== userId || item.kind !== kind),
+      { ...mutation, payload: { ...payload, state } },
+    ];
+  });
+  await replayCloudOutbox(userId);
 }
 
 export async function replayCloudOutbox(expectedUserId: string): Promise<void> {
-  const activeUserId = await ensureUserSession();
-  if (!activeUserId || activeUserId !== expectedUserId) return;
-  const items = await readOutbox();
-  for (const mutation of items) {
-    if (mutation.userId !== expectedUserId) continue;
-    try {
-      await executeCloudMutation(mutation);
-      await updateOutbox((current) => current.filter((item) => item.id !== mutation.id));
-    } catch {
-      break;
-    }
-  }
+  const operation = cloudWriteLock
+    .catch(() => undefined)
+    .then(async () => {
+      // Never create another identity while sending a mutation for an existing account.
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user.id !== expectedUserId)
+        throw new Error("Cloud identity changed");
+      const items = await readOutbox();
+      for (const mutation of items) {
+        if (mutation.userId !== expectedUserId) continue;
+        const { data: session } = await supabase.auth.getSession();
+        if (session.session?.user.id !== expectedUserId)
+          throw new Error("Cloud identity changed");
+        await executeCloudMutation(mutation);
+        await updateOutbox((current) =>
+          current.filter((item) => item.id !== mutation.id),
+        );
+      }
+    });
+  cloudWriteLock = operation.catch(() => undefined);
+  await operation;
+}
+
+export async function hasPendingCloudMutations(
+  userId: string,
+): Promise<boolean> {
+  return (await readOutbox()).some((item) => item.userId === userId);
 }
 
 export async function clearCloudOutboxForUser(userId: string): Promise<void> {
   await updateOutbox((items) => items.filter((item) => item.userId !== userId));
 }
 
-export async function syncAppStateToCloud(state: Record<string, unknown>): Promise<void> {
-  try {
-    const userId = await ensureUserSession();
-    if (!userId) return;
-    await saveAndSyncMutation(userId, 'app-state-upsert', {
-      user_id: userId,
-      state,
-      updated_at: new Date().toISOString(),
-    });
-  } catch {
-    // Keep startup and local writes usable if storage itself is unavailable.
-  }
+export async function syncAppStateToCloud(
+  state: StateSnapshot,
+  userId: string,
+): Promise<void> {
+  await saveAndSyncMutation(userId, "app-state-upsert", {
+    user_id: userId,
+    state,
+    updated_at: new Date().toISOString(),
+  });
 }
 
-export async function ensureUserSession(): Promise<string | null> {
+let sessionRequest: Promise<string | null> | null = null;
+export function ensureUserSession(): Promise<string | null> {
+  if (!sessionRequest)
+    sessionRequest = createUserSession().finally(() => {
+      sessionRequest = null;
+    });
+  return sessionRequest;
+}
+async function createUserSession(): Promise<string | null> {
   try {
     const {
       data: { session },
@@ -153,7 +292,11 @@ export async function ensureUserSession(): Promise<string | null> {
   }
 }
 
-export async function syncProfileToCloud(profile: any, stats: any, weekSchedule?: any): Promise<void> {
+export async function syncProfileToCloud(
+  profile: any,
+  stats: any,
+  weekSchedule?: any,
+): Promise<void> {
   try {
     const userId = await ensureUserSession();
     if (!userId) return;
@@ -179,7 +322,7 @@ export async function syncProfileToCloud(profile: any, stats: any, weekSchedule?
       payload.week_schedule = weekSchedule;
     }
 
-    await saveAndSyncMutation(userId, 'profile', payload);
+    await saveAndSyncMutation(userId, "profile", payload);
   } catch {
     // Non-blocking offline fallback
   }
@@ -190,12 +333,12 @@ export async function syncRoutineToCloud(routine: any): Promise<void> {
     const userId = await ensureUserSession();
     if (!userId) return;
 
-    await saveAndSyncMutation(userId, 'routine-upsert', {
+    await saveAndSyncMutation(userId, "routine-upsert", {
       id: routine.id,
       user_id: userId,
       name: routine.name,
-      emoji: routine.emoji || '⚡',
-      progression: routine.progression || 'linear',
+      emoji: routine.emoji || "⚡",
+      progression: routine.progression || "linear",
       exercises: routine.exercises || [],
     });
   } catch {
@@ -208,7 +351,7 @@ export async function deleteRoutineFromCloud(routineId: string): Promise<void> {
     const userId = await ensureUserSession();
     if (!userId) return;
 
-    await saveAndSyncMutation(userId, 'routine-delete', { id: routineId });
+    await saveAndSyncMutation(userId, "routine-delete", { id: routineId });
   } catch {
     // Non-blocking offline fallback
   }
@@ -219,7 +362,7 @@ export async function syncWorkoutToCloud(workout: any): Promise<void> {
     const userId = await ensureUserSession();
     if (!userId) return;
 
-    await saveAndSyncMutation(userId, 'workout-upsert', {
+    await saveAndSyncMutation(userId, "workout-upsert", {
       id: workout.id,
       user_id: userId,
       routine_name: workout.routineName,
@@ -239,7 +382,7 @@ export async function deleteWorkoutFromCloud(workoutId: string): Promise<void> {
     const userId = await ensureUserSession();
     if (!userId) return;
 
-    await saveAndSyncMutation(userId, 'workout-delete', { id: workoutId });
+    await saveAndSyncMutation(userId, "workout-delete", { id: workoutId });
   } catch {
     // Non-blocking offline fallback
   }
@@ -250,13 +393,16 @@ export async function syncBodyweightLogToCloud(log: any): Promise<void> {
     const userId = await ensureUserSession();
     if (!userId) return;
 
-    await saveAndSyncMutation(userId, 'bodyweight-upsert', { date: log.date, weight: log.weight });
+    await saveAndSyncMutation(userId, "bodyweight-upsert", {
+      date: log.date,
+      weight: log.weight,
+    });
   } catch {
     // Non-blocking offline fallback
   }
 }
 
-export async function fetchCloudUserData(): Promise<{
+export async function fetchCloudUserData(expectedUserId?: string): Promise<{
   profile?: any;
   stats?: any;
   weekSchedule?: any;
@@ -266,22 +412,39 @@ export async function fetchCloudUserData(): Promise<{
   appState?: Record<string, any>;
 } | null> {
   try {
-    const userId = await ensureUserSession();
+    const userId = expectedUserId ?? (await ensureUserSession());
     if (!userId) return null;
 
-    const [profileRes, routinesRes, workoutsRes, bwRes, appStateRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-      supabase.from('routines').select('*').eq('user_id', userId),
-      supabase.from('workouts').select('*').eq('user_id', userId).order('date', { ascending: false }),
-      supabase.from('bodyweight_logs').select('*').eq('user_id', userId).order('date', { ascending: true }),
-      supabase.from('user_app_state').select('state').eq('user_id', userId).maybeSingle(),
-    ]);
+    const [profileRes, routinesRes, workoutsRes, bwRes, appStateRes] =
+      await Promise.all([
+        supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        supabase.from("routines").select("*").eq("user_id", userId),
+        supabase
+          .from("workouts")
+          .select("*")
+          .eq("user_id", userId)
+          .order("date", { ascending: false }),
+        supabase
+          .from("bodyweight_logs")
+          .select("*")
+          .eq("user_id", userId)
+          .order("date", { ascending: true }),
+        supabase
+          .from("user_app_state")
+          .select("state")
+          .eq("user_id", userId)
+          .maybeSingle(),
+      ]);
 
-    const queryError = profileRes.error || routinesRes.error || workoutsRes.error || bwRes.error;
+    if (!appStateRes.error && appStateRes.data?.state)
+      return { appState: appStateRes.data.state };
+    const queryError =
+      profileRes.error || routinesRes.error || workoutsRes.error || bwRes.error;
     if (queryError) throw queryError;
 
     const result: any = {};
-    if (!appStateRes.error && appStateRes.data?.state) result.appState = appStateRes.data.state;
+    if (!appStateRes.error && appStateRes.data?.state)
+      result.appState = appStateRes.data.state;
 
     if (profileRes.data) {
       const p = profileRes.data;

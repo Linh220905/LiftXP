@@ -1,40 +1,69 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState as NativeAppState } from 'react-native';
+import { defaultProfile, defaultStats } from "@/lib/stateDefaults";
+import { useTodayKey } from "@/hooks/useTodayKey";
+import { withTimeout } from "@/lib/async";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { AppState as NativeAppState } from "react-native";
 import {
-  syncProfileToCloud,
-  syncRoutineToCloud,
-  deleteRoutineFromCloud,
-  syncWorkoutToCloud,
-  deleteWorkoutFromCloud,
-  syncBodyweightLogToCloud,
   fetchCloudUserData,
+  hasPendingCloudMutations,
   replayCloudOutbox,
   clearCloudOutboxForUser,
   syncAppStateToCloud,
-} from '@/lib/supabase';
-import { type MuscleSlug } from '@/lib/muscles';
-import { type ProgressionPolicy } from '@/lib/progression';
-import { type WorkoutHistoryItem } from '@/lib/effort';
-import { calculate1RM } from '@/lib/progression';
-import { calculateInitialGamification } from '@/lib/onboardingGamification';
-import { generatePersonalizedPlan } from '@/lib/planGenerator';
-import { localDateKey } from '@/lib/units';
+  ensureUserSession,
+  supabase,
+} from "@/lib/supabase";
+import { type MuscleSlug, musclesOf } from "@/lib/muscles";
+import { type ProgressionPolicy, calculate1RM } from "@/lib/progression";
+import { type WorkoutHistoryItem } from "@/lib/effort";
+import { calculateInitialGamification } from "@/lib/onboardingGamification";
+import { generatePersonalizedPlan } from "@/lib/planGenerator";
+import { localDateKey } from "@/lib/units";
 import {
   initPurchases,
   checkHasProEntitlement,
   setupPurchasesListener,
   syncPurchasesUser,
   logOutPurchases,
-} from '@/lib/purchases';
-import { signInWithApple, signInWithGoogle, deleteUserAccount } from '@/lib/auth';
-import { ensureUserSession, supabase } from '@/lib/supabase';
+} from "@/lib/purchases";
+import {
+  signInWithApple,
+  signInWithGoogle,
+  signInWithPassword,
+  deleteUserAccount,
+} from "@/lib/auth";
+import {
+  normalizeSnapshot,
+  mergeSnapshots,
+  stampChanges,
+  withDerivedStats,
+  type StateSnapshot,
+} from "@/lib/stateModel";
+import { writeJson, removeStored, flushStorage } from "@/lib/storage";
+import { liveActivity } from "@/lib/liveActivity";
 
-export type Experience = 'Regularly' | 'Less than 1 year ago' | 'More than 1 year ago' | 'No experience';
-export type PrimaryGoal = 'Build Muscle' | 'Burn Fat' | 'Increase Endurance' | 'Weight Loss' | 'Weight Gain' | 'Optimize Workouts';
-export type BodyType = 'Athletic' | 'Balanced' | 'Strong';
-export type Gender = 'Male' | 'Female';
-export type UnitSystem = 'Metric' | 'Imperial';
+export type Experience =
+  | "Regularly"
+  | "Less than 1 year ago"
+  | "More than 1 year ago"
+  | "No experience";
+export type PrimaryGoal =
+  | "Build Muscle"
+  | "Burn Fat"
+  | "Increase Endurance"
+  | "Weight Loss"
+  | "Weight Gain"
+  | "Optimize Workouts";
+export type BodyType = "Athletic" | "Balanced" | "Strong";
+export type Gender = "Male" | "Female";
+export type UnitSystem = "Metric" | "Imperial";
 
 export interface RoutineExercise {
   id: string;
@@ -45,6 +74,8 @@ export interface RoutineExercise {
   rir?: number;
   supersetId?: string; // Links consecutive exercises into superset
   progression?: ProgressionPolicy;
+  minReps?: number;
+  maxReps?: number;
 }
 
 export interface Routine {
@@ -94,7 +125,7 @@ export interface Profile {
   rating?: number;
   isPro: boolean;
   authEmail?: string;
-  authProvider?: 'apple' | 'google' | null;
+  authProvider?: "apple" | "google" | "email" | null;
   authUserId?: string;
 }
 
@@ -121,6 +152,8 @@ export interface WorkoutResult {
 
 interface AppStateValue {
   hydrated: boolean;
+  syncStatus: "local" | "syncing" | "synced" | "error";
+  retrySync: () => Promise<void>;
   hasOnboarded: boolean;
   profile: Profile;
   stats: PlayerStats;
@@ -129,7 +162,7 @@ interface AppStateValue {
   weekSchedule: Record<number, string | null>; // 0=Sun, 1=Mon... 6=Sat -> routineId or null
   bodyweightLogs: BodyweightLog[];
   workoutsHistory: WorkoutHistoryItem[];
-  addRoutine: (routine: Omit<Routine, 'id'>) => Routine;
+  addRoutine: (routine: Omit<Routine, "id">) => Routine;
   updateRoutine: (id: string, updates: Partial<Routine>) => void;
   deleteRoutine: (id: string) => void;
   deleteWorkout: (id: string) => void;
@@ -137,13 +170,27 @@ interface AppStateValue {
   loadStarterPlan: (customProfile?: Profile) => void;
   logBodyweight: (weight: number) => void;
   finishWorkout: (customMetrics?: {
+    sessionId?: string;
     volume?: number;
     exercises?: number;
     sets?: number;
     muscles?: MuscleSlug[];
     duration?: string;
     routineName?: string;
-    entries?: { id: string; sets: { weight?: number | string; reps?: number | string; rir?: number; done: boolean }[] }[];
+    entries?: {
+      id: string;
+      sets: {
+        weight?: number | string;
+        reps?: number | string;
+        targetReps?: number;
+        rir?: number;
+        isDropSet?: boolean;
+        setType?: "normal" | "warmup" | "dropset" | "failure";
+        done: boolean;
+      }[];
+      supersetId?: string;
+      progression?: ProgressionPolicy;
+    }[];
   }) => WorkoutResult;
   completeOnboarding: (profile: Profile) => void;
   resetOnboarding: () => Promise<void>;
@@ -151,679 +198,736 @@ interface AppStateValue {
   setProStatus: (isPro: boolean) => void;
   loginApple: () => Promise<boolean>;
   loginGoogle: () => Promise<boolean>;
+  loginPassword: (identifier: string, password: string) => Promise<boolean>;
   logoutAuth: () => Promise<void>;
   deleteAccountData: () => Promise<void>;
 }
 
-const LEGACY_STORAGE_KEY = '@train-xp/state';
-const STORAGE_KEY_PREFIX = '@train-xp/state:';
+const LEGACY_STORAGE_KEY = "@train-xp/state";
+const STORAGE_KEY_PREFIX = "@train-xp/state:";
 
 export const STARTER_ROUTINES: Routine[] = [
   {
-    id: 'starter_push',
-    name: 'Push Day (Chest, Shoulders & Tris)',
-    emoji: 'zap',
-    progression: 'linear',
+    id: "starter_push",
+    name: "Push Day (Chest, Shoulders & Tris)",
+    emoji: "zap",
+    progression: "linear",
     exercises: [
-      { id: 'barbell_bench_press', sets: 4, reps: 8, targetWeight: 60, rir: 2 },
-      { id: 'incline_barbell_bench_press', sets: 3, reps: 10, targetWeight: 50, rir: 2 },
-      { id: 'overhead_shoulder_press', sets: 3, reps: 8, targetWeight: 40, rir: 2 },
-      { id: 'pec_deck_fly', sets: 3, reps: 12, targetWeight: 45, rir: 1, supersetId: 'ss_push_1' },
-      { id: 'tricep_rope_pushdown', sets: 3, reps: 12, targetWeight: 25, rir: 1, supersetId: 'ss_push_1' },
+      { id: "barbell_bench_press", sets: 4, reps: 8, targetWeight: 60, rir: 2 },
+      {
+        id: "incline_barbell_bench_press",
+        sets: 3,
+        reps: 10,
+        targetWeight: 50,
+        rir: 2,
+      },
+      {
+        id: "overhead_shoulder_press",
+        sets: 3,
+        reps: 8,
+        targetWeight: 40,
+        rir: 2,
+      },
+      {
+        id: "pec_deck_fly",
+        sets: 3,
+        reps: 12,
+        targetWeight: 45,
+        rir: 1,
+        supersetId: "ss_push_1",
+      },
+      {
+        id: "tricep_rope_pushdown",
+        sets: 3,
+        reps: 12,
+        targetWeight: 25,
+        rir: 1,
+        supersetId: "ss_push_1",
+      },
     ],
   },
   {
-    id: 'starter_pull',
-    name: 'Pull Day (Back & Biceps)',
-    emoji: 'anchor',
-    progression: 'linear',
+    id: "starter_pull",
+    name: "Pull Day (Back & Biceps)",
+    emoji: "anchor",
+    progression: "linear",
     exercises: [
-      { id: 'lat_pulldown', sets: 4, reps: 10, targetWeight: 55, rir: 2 },
-      { id: 'barbell_bent_over_row', sets: 4, reps: 8, targetWeight: 60, rir: 2 },
-      { id: 'seated_cable_row', sets: 3, reps: 10, targetWeight: 50, rir: 2 },
-      { id: 'standing_bicep_cable_curl', sets: 3, reps: 12, targetWeight: 25, rir: 1 },
-      { id: 'hammer_curls', sets: 3, reps: 12, targetWeight: 14, rir: 1 },
+      { id: "lat_pulldown", sets: 4, reps: 10, targetWeight: 55, rir: 2 },
+      {
+        id: "barbell_bent_over_row",
+        sets: 4,
+        reps: 8,
+        targetWeight: 60,
+        rir: 2,
+      },
+      { id: "seated_cable_row", sets: 3, reps: 10, targetWeight: 50, rir: 2 },
+      {
+        id: "standing_bicep_cable_curl",
+        sets: 3,
+        reps: 12,
+        targetWeight: 25,
+        rir: 1,
+      },
+      { id: "hammer_curls", sets: 3, reps: 12, targetWeight: 14, rir: 1 },
     ],
   },
   {
-    id: 'starter_legs',
-    name: 'Leg Day (Quads, Glutes & Calves)',
-    emoji: 'shield',
-    progression: 'linear',
+    id: "starter_legs",
+    name: "Leg Day (Quads, Glutes & Calves)",
+    emoji: "shield",
+    progression: "linear",
     exercises: [
-      { id: 'barbell_back_squat', sets: 4, reps: 8, targetWeight: 80, rir: 2 },
-      { id: 'leg_press_machine', sets: 3, reps: 10, targetWeight: 140, rir: 2 },
-      { id: 'lying_leg_curl', sets: 3, reps: 12, targetWeight: 40, rir: 1, supersetId: 'ss_leg_1' },
-      { id: 'leg_extension_machine', sets: 3, reps: 12, targetWeight: 45, rir: 1, supersetId: 'ss_leg_1' },
-      { id: 'standing_calf_raise', sets: 4, reps: 15, targetWeight: 50, rir: 1 },
+      { id: "barbell_back_squat", sets: 4, reps: 8, targetWeight: 80, rir: 2 },
+      { id: "leg_press_machine", sets: 3, reps: 10, targetWeight: 140, rir: 2 },
+      {
+        id: "lying_leg_curl",
+        sets: 3,
+        reps: 12,
+        targetWeight: 40,
+        rir: 1,
+        supersetId: "ss_leg_1",
+      },
+      {
+        id: "leg_extension_machine",
+        sets: 3,
+        reps: 12,
+        targetWeight: 45,
+        rir: 1,
+        supersetId: "ss_leg_1",
+      },
+      {
+        id: "standing_calf_raise",
+        sets: 4,
+        reps: 15,
+        targetWeight: 50,
+        rir: 1,
+      },
     ],
   },
 ];
 
 const defaultWeekSchedule: Record<number, string | null> = {
-  1: 'starter_push', // Mon
-  2: null,           // Tue
-  3: 'starter_pull', // Wed
-  4: null,           // Thu
-  5: 'starter_legs', // Fri
-  6: null,           // Sat
-  0: null,           // Sun
-};
-
-const defaultProfile: Profile = {
-  name: 'Lifter',
-  unit: 'Metric',
-  weight: 68,
-  height: 170,
-  thinkAboutFitness: 'Often',
-  achieveMotivations: ['Health & Wellness', 'Build Discipline'],
-  goal: 'Build Muscle',
-  sensitiveJoints: [],
-  experience: 'Regularly',
-  hasRoutine: true,
-  equipment: ['Dumbbell', 'Barbell', 'Bench', 'Plate', 'Cable Machine'],
-  lastMusclesWorked: ['Chest', 'Arms'],
-  workoutDuration: '60 minutes',
-  daysPerWeek: 3,
-  targetMuscles: ['Full chest', 'Big arms', 'Broad shoulders'],
-  bodyType: 'Athletic',
-  gender: 'Male',
-  birthYear: 2000,
-  birthMonth: 'Dec',
-  birthDay: 10,
-  prSquat: 85,
-  benchPressPR: 60,
-  deadliftPR: 100,
-  goalWeight: 75,
-  goalWeeks: 4,
-  streakCommitment: 30,
-  notificationsEnabled: false,
-  isPro: false,
-};
-
-const defaultStats: PlayerStats = {
-  level: 1,
-  xp: 0,
-  xpToNext: 500,
-  streak: 0,
-  workouts: 0,
-  prs: 0,
-  totalVolume: 0,
-  muscleTrainedCount: {},
+  1: "starter_push", // Mon
+  2: null, // Tue
+  3: "starter_pull", // Wed
+  4: null, // Thu
+  5: "starter_legs", // Fri
+  6: null, // Sat
+  0: null, // Sun
 };
 
 const defaultWorkoutsHistory: WorkoutHistoryItem[] = [];
 const defaultBodyweightLogs: BodyweightLog[] = [];
 
 const AppStateContext = createContext<AppStateValue | null>(null);
+const GUEST_KEY = `${STORAGE_KEY_PREFIX}local-guest`;
+const initialState: StateSnapshot = {
+  schemaVersion: 3,
+  hasOnboarded: false,
+  profile: defaultProfile,
+  stats: defaultStats,
+  lastWorkout: null,
+  routines: STARTER_ROUTINES,
+  weekSchedule: defaultWeekSchedule,
+  bodyweightLogs: [],
+  workoutsHistory: [],
+  baselineXp: 0,
+  clocks: {},
+};
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const storageKeyRef = useRef(LEGACY_STORAGE_KEY);
-  const identityVersionRef = useRef(0);
-  const purchasesListenerCleanupRef = useRef<(() => void) | null>(null);
-  const activeUserIdRef = useRef<string | null>(null);
+  const todayKey = useTodayKey();
+  const [snapshot, setSnapshot] = useState(initialState);
+  const current = useRef(snapshot);
+  const storageKey = useRef(GUEST_KEY);
+  const activeUser = useRef<string | null>(null);
+  const generation = useRef(0);
+  const ready = useRef(false);
+  const mounted = useRef(true);
+  const authLock = useRef(false);
   const [hydrated, setHydrated] = useState(false);
-  const [cloudSnapshotReady, setCloudSnapshotReady] = useState(false);
-  const [hasOnboarded, setHasOnboarded] = useState(false);
-  const [profile, setProfile] = useState<Profile>(defaultProfile);
-  const [stats, setStats] = useState<PlayerStats>(defaultStats);
-  const [lastWorkout, setLastWorkout] = useState<WorkoutResult | null>(null);
-  const [routines, setRoutines] = useState<Routine[]>(STARTER_ROUTINES);
-  const [weekSchedule, setWeekSchedule] = useState<Record<number, string | null>>(defaultWeekSchedule);
-  const [bodyweightLogs, setBodyweightLogs] = useState<BodyweightLog[]>(defaultBodyweightLogs);
-  const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistoryItem[]>(defaultWorkoutsHistory);
+  const [syncStatus, setSyncStatus] =
+    useState<AppStateValue["syncStatus"]>("local");
+  const listenerCleanup = useRef<(() => void) | null>(null);
+  const syncing = useRef<Promise<void> | null>(null);
 
-  const activateStorageForUser = async (
-    userId: string,
-    migrateLegacy: boolean,
-    guestSnapshot?: Partial<AppStateValue>,
-  ) => {
-    const version = ++identityVersionRef.current;
-    setHydrated(false);
-    setCloudSnapshotReady(false);
-    const key = `${STORAGE_KEY_PREFIX}${userId}`;
-    activeUserIdRef.current = userId;
-    storageKeyRef.current = key;
-    // Remove the previous identity's data immediately while the next cache/cloud
-    // snapshot is loading, so account switching cannot briefly reveal old history.
-    setHasOnboarded(false);
-    setProfile({ ...defaultProfile, authUserId: userId });
-    setStats(defaultStats);
-    setLastWorkout(null);
-    setRoutines(STARTER_ROUTINES);
-    setWeekSchedule(defaultWeekSchedule);
-    setBodyweightLogs(defaultBodyweightLogs);
-    setWorkoutsHistory(defaultWorkoutsHistory);
-
-    let localValue: string | null = null;
-    try {
-      localValue = await AsyncStorage.getItem(key);
-      if (!localValue && migrateLegacy) {
-        localValue = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
-        if (localValue) await AsyncStorage.setItem(key, localValue);
-      }
-    } catch {
-      // The account can still load from cloud if local storage is unavailable.
-    }
-    void replayCloudOutbox(userId);
-    const cloud = await Promise.race([
-      fetchCloudUserData(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
-    ]);
-    if (version !== identityVersionRef.current) return;
-    setCloudSnapshotReady(Boolean(cloud));
-
-    if (localValue) {
-      try {
-        const saved = JSON.parse(localValue) as Partial<AppStateValue>;
-        setHasOnboarded(Boolean(saved.hasOnboarded));
-        setProfile({ ...defaultProfile, ...(saved.profile ?? {}), authUserId: userId });
-        setStats({ ...defaultStats, ...(saved.stats ?? {}) });
-        setLastWorkout(saved.lastWorkout ?? null);
-        if (Array.isArray(saved.routines)) setRoutines(saved.routines);
-        if (saved.weekSchedule) setWeekSchedule(saved.weekSchedule);
-        if (Array.isArray(saved.bodyweightLogs)) setBodyweightLogs(saved.bodyweightLogs);
-        if (Array.isArray(saved.workoutsHistory)) setWorkoutsHistory(saved.workoutsHistory);
-      } catch {
-        // Ignore malformed local cache and continue with cloud/default data.
-      }
-    }
-    const remoteHasData = Boolean(cloud && (
-      cloud.appState || cloud.profile || cloud.routines?.length || cloud.workouts?.length || cloud.bodyweightLogs?.length
-    ));
-    if (guestSnapshot && cloud && !localValue && !remoteHasData && version === identityVersionRef.current) {
-      setHasOnboarded(Boolean(guestSnapshot.hasOnboarded));
-      setProfile({ ...defaultProfile, ...(guestSnapshot.profile ?? {}), authUserId: userId });
-      setStats({ ...defaultStats, ...(guestSnapshot.stats ?? {}) });
-      setLastWorkout(guestSnapshot.lastWorkout ?? null);
-      setRoutines(guestSnapshot.routines ?? STARTER_ROUTINES);
-      setWeekSchedule(guestSnapshot.weekSchedule ?? defaultWeekSchedule);
-      setBodyweightLogs(guestSnapshot.bodyweightLogs ?? []);
-      setWorkoutsHistory(guestSnapshot.workoutsHistory ?? []);
-    } else if (cloud?.appState && version === identityVersionRef.current) {
-      const saved = cloud.appState as Partial<AppStateValue>;
-      setHasOnboarded(Boolean(saved.hasOnboarded));
-      setProfile({ ...defaultProfile, ...(saved.profile ?? {}), authUserId: userId });
-      setStats({ ...defaultStats, ...(saved.stats ?? {}) });
-      setLastWorkout(saved.lastWorkout ?? null);
-      setRoutines(saved.routines ?? STARTER_ROUTINES);
-      setWeekSchedule(saved.weekSchedule ?? defaultWeekSchedule);
-      setBodyweightLogs(saved.bodyweightLogs ?? []);
-      setWorkoutsHistory(saved.workoutsHistory ?? []);
-    } else if (cloud && version === identityVersionRef.current) {
-      if (cloud.profile) {
-        setHasOnboarded(true);
-        setProfile((p) => ({ ...p, ...cloud.profile, authUserId: userId }));
-      }
-      if (cloud.stats) setStats((s) => ({ ...s, ...cloud.stats }));
-      if (cloud.weekSchedule) setWeekSchedule(cloud.weekSchedule);
-      if (cloud.routines) setRoutines(cloud.routines);
-      if (cloud.workouts) setWorkoutsHistory(cloud.workouts);
-      if (cloud.bodyweightLogs) setBodyweightLogs(cloud.bodyweightLogs);
-    }
-    setHydrated(true);
+  const publish = (next: StateSnapshot) => {
+    current.current = next;
+    if (mounted.current) setSnapshot(next);
   };
-
+  const save = (next: StateSnapshot) => {
+    const key = storageKey.current,
+      userId = activeUser.current,
+      version = generation.current;
+    return writeJson(key, next)
+      .then(async () => {
+        if (version !== generation.current || !mounted.current) return;
+        if (userId) {
+          setSyncStatus("syncing");
+          await syncAppStateToCloud(next, userId);
+          if (version === generation.current && mounted.current)
+            setSyncStatus("synced");
+        } else setSyncStatus("local");
+      })
+      .catch(() => {
+        if (version === generation.current && mounted.current)
+          setSyncStatus("error");
+      });
+  };
+  const commit = (change: (state: StateSnapshot) => StateSnapshot) => {
+    if (!ready.current) return current.current;
+    const before = current.current;
+    const changed = change(before);
+    const needsStats =
+      changed.workoutsHistory !== before.workoutsHistory ||
+      changed.baselineXp !== before.baselineXp ||
+      changed.profile.prSquat !== before.profile.prSquat ||
+      changed.profile.benchPressPR !== before.profile.benchPressPR ||
+      changed.profile.deadliftPR !== before.profile.deadliftPR;
+    const next = stampChanges(
+      before,
+      needsStats ? withDerivedStats(changed) : changed,
+    );
+    publish(next);
+    void save(next);
+    return next;
+  };
+  const bindPurchases = async (userId: string | null, version: number) => {
+    listenerCleanup.current?.();
+    listenerCleanup.current = null;
+    if (!userId || !(await initPurchases(userId))) return;
+    const entitlement = await checkHasProEntitlement();
+    if (!mounted.current || generation.current !== version) return;
+    if (entitlement !== null && entitlement !== current.current.profile.isPro)
+      commit((s) => ({ ...s, profile: { ...s.profile, isPro: entitlement } }));
+    listenerCleanup.current = setupPurchasesListener((isPro) => {
+      if (generation.current === version && mounted.current)
+        commit((s) => ({ ...s, profile: { ...s.profile, isPro } }));
+    });
+  };
+  const reconcile = async (userId: string, version: number) => {
+    try {
+      setSyncStatus("syncing");
+      // A failed replay does not discard local mutations. Remote merge respects their clocks.
+      await replayCloudOutbox(userId).catch(() => undefined);
+      const pending = await hasPendingCloudMutations(userId);
+      const cloud = await withTimeout(fetchCloudUserData(userId));
+      if (!cloud) throw new Error("Cloud unavailable");
+      if (!mounted.current || generation.current !== version) return;
+      if (cloud.appState || cloud.profile) {
+        const raw = cloud.appState ?? {
+          hasOnboarded: true,
+          profile: cloud.profile,
+          routines: cloud.routines,
+          weekSchedule: cloud.weekSchedule,
+          workoutsHistory: cloud.workouts,
+          bodyweightLogs: cloud.bodyweightLogs,
+        };
+        const remote = normalizeSnapshot(raw, initialState);
+        const local = current.current;
+        const hasLocalData = pending || Object.keys(local.clocks).length > 0;
+        const merged = hasLocalData ? mergeSnapshots(local, remote) : remote;
+        publish({
+          ...merged,
+          profile: {
+            ...merged.profile,
+            authUserId: userId,
+            authEmail: local.profile.authEmail,
+            authProvider: local.profile.authProvider,
+            isPro: local.profile.isPro,
+          },
+        });
+      }
+      await save(current.current);
+    } catch {
+      if (generation.current === version && mounted.current)
+        setSyncStatus("error");
+    }
+  };
+  const activate = async (
+    userId: string | null,
+    migrateLegacy = false,
+    guest?: StateSnapshot,
+  ) => {
+    const version = ++generation.current;
+    ready.current = false;
+    setHydrated(false);
+    listenerCleanup.current?.();
+    listenerCleanup.current = null;
+    activeUser.current = userId;
+    storageKey.current = userId ? `${STORAGE_KEY_PREFIX}${userId}` : GUEST_KEY;
+    publish({
+      ...initialState,
+      profile: { ...defaultProfile, authUserId: userId ?? undefined },
+    });
+    let raw: string | null = null;
+    try {
+      await flushStorage();
+      raw = await AsyncStorage.getItem(storageKey.current);
+      if (!raw && migrateLegacy)
+        raw = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* Local guest remains usable. */
+    }
+    if (generation.current !== version || !mounted.current) return;
+    let local = initialState;
+    try {
+      if (raw) local = normalizeSnapshot(JSON.parse(raw), initialState);
+    } catch {
+      /* Malformed cache is not trusted. */
+    }
+    // Carry the guest survey only into a new account. Remote data is merged when it arrives.
+    if (!raw && guest && !guest.profile.authProvider && userId) {
+      const cloud = await withTimeout(fetchCloudUserData(userId)).catch(
+        () => null,
+      );
+      if (generation.current !== version || !mounted.current) return;
+      if (cloud?.appState)
+        local = normalizeSnapshot(cloud.appState, initialState);
+      else if (cloud?.profile)
+        local = normalizeSnapshot(
+          {
+            hasOnboarded: true,
+            profile: cloud.profile,
+            routines: cloud.routines,
+            weekSchedule: cloud.weekSchedule,
+            workoutsHistory: cloud.workouts,
+            bodyweightLogs: cloud.bodyweightLogs,
+          },
+          initialState,
+        );
+      else if (cloud) local = guest;
+      // A failed account lookup never uploads the guest's history over an existing account.
+    }
+    const { data } = await withTimeout(supabase.auth.getSession()).catch(
+      () => ({ data: { session: null } }),
+    );
+    if (generation.current !== version || !mounted.current) return;
+    const user = data.session?.user;
+    const provider = user?.app_metadata?.provider;
+    publish({
+      ...local,
+      profile: {
+        ...local.profile,
+        authUserId: userId ?? undefined,
+        authEmail:
+          userId && user && !user.is_anonymous ? user.email : undefined,
+        authProvider:
+          provider === "apple" || provider === "google" || provider === "email"
+            ? provider
+            : null,
+      },
+    });
+    ready.current = true;
+    setHydrated(true);
+    setSyncStatus(userId ? "syncing" : "local");
+    void bindPurchases(userId, version).catch(() => {
+      if (generation.current === version && mounted.current)
+        setSyncStatus("error");
+    });
+    if (userId) void reconcile(userId, version);
+  };
+  const retrySync = async () => {
+    if (syncing.current) return syncing.current;
+    const operation = (async () => {
+      const version = generation.current;
+      if (!activeUser.current) {
+        const id = await withTimeout(ensureUserSession());
+        if (id && mounted.current && version === generation.current)
+          await activate(id, false, current.current);
+        else if (mounted.current && version === generation.current)
+          await save(current.current);
+      } else await reconcile(activeUser.current, generation.current);
+    })();
+    syncing.current = operation;
+    try {
+      await operation;
+    } catch {
+      if (mounted.current) setSyncStatus("error");
+    } finally {
+      syncing.current = null;
+    }
+  };
   useEffect(() => {
+    mounted.current = true;
+    liveActivity.attach();
     let cancelled = false;
     void (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      let activeUserId = sessionData.session?.user.id;
-      let isAnonymous = Boolean(sessionData.session?.user.is_anonymous);
-      if (!activeUserId) {
-        activeUserId = await ensureUserSession() ?? undefined;
-        const { data } = await supabase.auth.getUser();
-        isAnonymous = data.user?.is_anonymous ?? true;
+      try {
+        const { data } = await withTimeout(supabase.auth.getSession());
+        const id = data.session?.user.id ?? null;
+        if (!cancelled)
+          await activate(
+            id,
+            !!data.session?.user.is_anonymous || !data.session,
+          );
+        if (!id && !cancelled) void retrySync();
+      } catch {
+        if (!cancelled) await activate(null, true);
       }
-      if (!cancelled && activeUserId) await activateStorageForUser(activeUserId, isAnonymous);
-      else if (!cancelled) setHydrated(true);
-
-      const ready = await initPurchases();
-      if (cancelled || !ready) return;
-      const hasPro = await checkHasProEntitlement();
-      setProfile((p) => p.isPro === hasPro ? p : { ...p, isPro: hasPro });
-      purchasesListenerCleanupRef.current = setupPurchasesListener((isPro) =>
-        setProfile((prev) => prev.isPro === isPro ? prev : { ...prev, isPro }),
-      );
-    })();
-    const appStateSubscription = NativeAppState.addEventListener('change', (state) => {
-      if (state === 'active' && activeUserIdRef.current) {
-        void replayCloudOutbox(activeUserIdRef.current);
+    })().catch(() => {
+      if (!cancelled) {
+        ready.current = true;
+        setHydrated(true);
+        setSyncStatus("error");
+      }
+    });
+    const sub = NativeAppState.addEventListener("change", (state) => {
+      if (state === "active" && ready.current) {
+        publish(withDerivedStats(current.current));
+        void retrySync();
       }
     });
     return () => {
       cancelled = true;
-      identityVersionRef.current += 1;
-      appStateSubscription.remove();
-      purchasesListenerCleanupRef.current?.();
-      purchasesListenerCleanupRef.current = null;
+      mounted.current = false;
+      generation.current++;
+      ready.current = false;
+      sub.remove();
+      listenerCleanup.current?.();
+      liveActivity.dispose();
     };
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    const appSnapshot = {
-      hasOnboarded,
-      profile,
-      stats,
-      lastWorkout,
-      routines,
-      weekSchedule,
-      bodyweightLogs,
-      workoutsHistory,
-    };
-    void AsyncStorage.setItem(
-      storageKeyRef.current,
-      JSON.stringify(appSnapshot),
-    );
-    if (cloudSnapshotReady) void syncAppStateToCloud(appSnapshot);
-  }, [hydrated, cloudSnapshotReady, hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory]);
+    if (ready.current) publish(withDerivedStats(current.current));
+  }, [todayKey]);
+  useEffect(() => {
+    if (syncStatus !== "error") return;
+    const timer = setTimeout(() => {
+      if (ready.current && NativeAppState.currentState !== "background")
+        void retrySync();
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [syncStatus]);
 
-  const addRoutine = (newRoutine: Omit<Routine, 'id'>): Routine => {
-    const routine: Routine = {
-      ...newRoutine,
-      id: 'routine_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  const addRoutine = (input: Omit<Routine, "id">): Routine => {
+    const routine = {
+      ...input,
+      name: input.name.trim(),
+      id: `routine_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
     };
-    setRoutines((prev) => [...prev, routine]);
-    void syncRoutineToCloud(routine);
+    if (!routine.name || !routine.exercises.length)
+      throw new Error("Routine requires a name and exercises");
+    commit((s) => ({ ...s, routines: [...s.routines, routine] }));
     return routine;
   };
-
-  const updateRoutine = (id: string, updates: Partial<Routine>) => {
-    setRoutines((prev) => {
-      const next = prev.map((r) => (r.id === id ? { ...r, ...updates } : r));
-      const target = next.find((r) => r.id === id);
-      if (target) void syncRoutineToCloud(target);
-      return next;
-    });
-  };
-
-  const deleteRoutine = (id: string) => {
-    setRoutines((prev) => prev.filter((r) => r.id !== id));
-    void deleteRoutineFromCloud(id);
-    setWeekSchedule((prev) => {
-      const next = { ...prev };
-      Object.keys(next).forEach((key) => {
-        const numKey = Number(key);
-        if (next[numKey] === id) {
-          next[numKey] = null;
-        }
-      });
-      return next;
-    });
-  };
-
-  const assignWeekSchedule = (dayIdx: number, routineId: string | null) => {
-    setWeekSchedule((prev) => {
-      const next = {
-        ...prev,
-        [dayIdx]: routineId,
-      };
-      void syncProfileToCloud(profile, stats, next);
-      return next;
-    });
-  };
-
-  const loadStarterPlan = (customProfile?: Profile) => {
-    const targetProf = customProfile || profile;
-    const gen = generatePersonalizedPlan(targetProf);
-    const nextIds = new Set(gen.routines.map((routine) => routine.id));
-    routines.filter((routine) => !nextIds.has(routine.id)).forEach((routine) => {
-      void deleteRoutineFromCloud(routine.id);
-    });
-    setRoutines(gen.routines);
-    setWeekSchedule(gen.weekSchedule);
-    gen.routines.forEach((r) => void syncRoutineToCloud(r));
-    void syncProfileToCloud(targetProf, stats, gen.weekSchedule);
-  };
-
-  const logBodyweight = (w: number) => {
-    const dateStr = localDateKey();
-    const newLog: BodyweightLog = {
-      date: dateStr,
-      weight: w,
-      timestamp: Date.now(),
-    };
-    setBodyweightLogs((prev) => [...prev.filter((l) => l.date !== dateStr), newLog]);
-    setProfile((prev) => {
-      const next = { ...prev, weight: w };
-      void syncProfileToCloud(next, stats, weekSchedule);
-      return next;
-    });
-    void syncBodyweightLogToCloud(newLog);
-  };
-
-  const completeOnboarding = (nextProfile: Profile) => {
-    setProfile(nextProfile);
-    setHasOnboarded(true);
-
-    // Initial starting log for bodyweight trend chart
-    if (nextProfile.weight && nextProfile.weight >= 15) {
-      const initialLog: BodyweightLog = {
-        date: localDateKey(),
-        weight: nextProfile.weight,
-        timestamp: Date.now(),
-      };
-      setBodyweightLogs([initialLog]);
-      void syncBodyweightLogToCloud(initialLog);
-    }
-
-    // Compute starting RPG Level, total XP and initial trophies from benchmark PRs
-    const gamification = calculateInitialGamification({
-      benchKg: nextProfile.benchPressPR,
-      squatKg: nextProfile.prSquat,
-      deadliftKg: nextProfile.deadliftPR,
-      bodyweightKg: nextProfile.weight,
-      unit: nextProfile.unit,
-    });
-
-    const prCount = [nextProfile.prSquat, nextProfile.benchPressPR, nextProfile.deadliftPR].filter((v) => Number(v) > 0).length;
-
-    const onboardStats: PlayerStats = {
-      ...stats,
-      level: gamification.endLevel,
-      xp: gamification.totalExp,
-      xpToNext: gamification.xpNeededForNext,
-      prs: prCount > 0 ? prCount : stats.prs,
-    };
-    setStats(onboardStats);
-
-    // Auto generate tailored workout split routines matching user's selections
-    const plan = generatePersonalizedPlan(nextProfile);
-    setRoutines(plan.routines);
-    setWeekSchedule(plan.weekSchedule);
-
-    void syncProfileToCloud(nextProfile, onboardStats, plan.weekSchedule);
-    plan.routines.forEach((r) => void syncRoutineToCloud(r));
-  };
-
-  const resetOnboarding = async () => {
-    setHasOnboarded(false);
-    await AsyncStorage.setItem(
-      storageKeyRef.current,
-      JSON.stringify({ hasOnboarded: false, profile, stats, lastWorkout, routines, weekSchedule }),
-    );
-  };
-
-  const updateProfile = (updates: Partial<Profile>) => {
-    setProfile((prev) => {
-      const next = { ...prev, ...updates };
-      void syncProfileToCloud(next, stats, weekSchedule);
-      return next;
-    });
-  };
-
-  const setProStatus = (isPro: boolean) => {
-    setProfile((prev) => {
-      const next = { ...prev, isPro };
-      void syncProfileToCloud(next, stats, weekSchedule);
-      return next;
-    });
-  };
-
-  const loginApple = async (): Promise<boolean> => {
-    try {
-      const guestSnapshot = { hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory };
-      const user = await signInWithApple();
-      if (!user) return false;
-      await activateStorageForUser(user.id, false, guestSnapshot);
-      void syncPurchasesUser(user.id);
-      setProfile((prev) => {
-        const next = {
-          ...prev,
-          name: user.fullName || prev.name,
-          authEmail: user.email || prev.authEmail,
-          authProvider: 'apple' as const,
-          authUserId: user.id,
-        };
-        void syncProfileToCloud(next, stats, weekSchedule);
-        return next;
-      });
-      return true;
-    } catch (err) {
-      console.warn('[Auth] Apple login error:', err);
-      throw err;
-    }
-  };
-
-  const loginGoogle = async (): Promise<boolean> => {
-    try {
-      const guestSnapshot = { hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory };
-      const user = await signInWithGoogle();
-      if (!user) return false;
-      await activateStorageForUser(user.id, false, guestSnapshot);
-      void syncPurchasesUser(user.id);
-      setProfile((prev) => {
-        const next = {
-          ...prev,
-          name: user.fullName || prev.name,
-          authEmail: user.email || prev.authEmail,
-          authProvider: 'google' as const,
-          authUserId: user.id,
-        };
-        void syncProfileToCloud(next, stats, weekSchedule);
-        return next;
-      });
-      return true;
-    } catch (err) {
-      console.warn('[Auth] Google login error:', err);
-      throw err;
-    }
-  };
-
-  const logoutAuth = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    await logOutPurchases();
-    const anonymousId = await ensureUserSession();
-    if (anonymousId) await activateStorageForUser(anonymousId, false);
-    setProfile((prev) => ({ ...prev, authEmail: undefined, authProvider: null }));
-  };
-
-  const deleteAccountData = async () => {
-    const currentStorageKey = storageKeyRef.current;
-    const userId = profile.authUserId;
-    await deleteUserAccount();
-    if (userId) await clearCloudOutboxForUser(userId);
-    await AsyncStorage.removeItem(currentStorageKey);
-    if (userId) await AsyncStorage.removeItem(`@train-xp/workout-draft:${userId}`);
-    storageKeyRef.current = LEGACY_STORAGE_KEY;
-    await logOutPurchases();
-    setHasOnboarded(false);
-    setProfile(defaultProfile);
-    setStats(defaultStats);
-    setRoutines(STARTER_ROUTINES);
-    setWeekSchedule(defaultWeekSchedule);
-    setBodyweightLogs(defaultBodyweightLogs);
-    setWorkoutsHistory(defaultWorkoutsHistory);
-    setLastWorkout(null);
-    setProfile(defaultProfile);
-    setHydrated(true);
-    setCloudSnapshotReady(false);
-  };
-
-  const deleteWorkout = (id: string) => {
-    const remaining = workoutsHistory.filter((workout) => workout.id !== id);
-    setWorkoutsHistory(remaining);
-    const bestByExercise = new Map<string, number>();
-    let personalRecords = 0;
-    [...remaining].reverse().forEach((workout) => {
-      let setNewRecord = false;
-      workout.entries.forEach((entry) => {
-        const workoutBest = Math.max(0, ...entry.sets.filter((set) => set.done)
-          .map((set) => calculate1RM(Number(set.weight), Number(set.reps))));
-        const previousBest = bestByExercise.get(entry.id) ?? 0;
-        if (workoutBest > previousBest) setNewRecord = true;
-        if (workoutBest > previousBest) bestByExercise.set(entry.id, workoutBest);
-      });
-      if (setNewRecord) personalRecords++;
-    });
-    const distinctDays = [...new Set(remaining.map((workout) => localDateKey(new Date(workout.date))))];
-    let streak = 0;
-    if (distinctDays.length) {
-      const latest = new Date(`${distinctDays[0]}T12:00:00`);
-      for (const key of distinctDays) {
-        const date = new Date(`${key}T12:00:00`);
-        const expected = new Date(latest);
-        expected.setDate(expected.getDate() - streak);
-        if (localDateKey(date) !== localDateKey(expected)) break;
-        streak++;
-      }
-    }
-    setStats((current) => ({
-      ...current,
-      workouts: remaining.length,
-      prs: personalRecords,
-      streak,
-      totalVolume: remaining.reduce((total, workout) => total + (Number(workout.volume) || 0), 0),
+  const updateRoutine = (id: string, updates: Partial<Routine>) =>
+    commit((s) => ({
+      ...s,
+      routines: s.routines.map((r) =>
+        r.id === id ? { ...r, ...updates, id } : r,
+      ),
     }));
-    void deleteWorkoutFromCloud(id);
+  const deleteRoutine = (id: string) =>
+    commit((s) => ({
+      ...s,
+      routines: s.routines.filter((r) => r.id !== id),
+      weekSchedule: Object.fromEntries(
+        Object.entries(s.weekSchedule).map(([d, r]) => [
+          d,
+          r === id ? null : r,
+        ]),
+      ),
+    }));
+  const assignWeekSchedule = (day: number, routineId: string | null) => {
+    if (
+      !Number.isInteger(day) ||
+      day < 0 ||
+      day > 6 ||
+      (routineId && !current.current.routines.some((r) => r.id === routineId))
+    )
+      return;
+    commit((s) => ({
+      ...s,
+      weekSchedule: { ...s.weekSchedule, [day]: routineId },
+    }));
   };
-
-  const finishWorkout = (customMetrics?: {
-    volume?: number;
-    exercises?: number;
-    sets?: number;
-    muscles?: MuscleSlug[];
-    duration?: string;
-    routineName?: string;
-    entries?: { id: string; sets: { weight?: number | string; reps?: number | string; rir?: number; done: boolean }[] }[];
-  }) => {
-    const xpGain = profile.isPro ? 250 : 180;
-    const rankedUp = stats.xp + xpGain >= stats.xpToNext;
-    const vol = customMetrics?.volume !== undefined ? customMetrics.volume : 0;
-    const exCount = customMetrics?.exercises !== undefined ? customMetrics.exercises : 0;
-    const setCount = customMetrics?.sets !== undefined ? customMetrics.sets : 0;
-    const duration = customMetrics?.duration || '00:00';
-
-    const previousBestByExercise = new Map<string, number>();
-    workoutsHistory.forEach((workout) => {
-      workout.entries?.forEach((entry) => {
-        entry.sets?.forEach((set) => {
-          if (!set.done) return;
-          const weight = Number(set.weight);
-          const reps = Number(set.reps);
-          const estimated = calculate1RM(weight, reps);
-          if (estimated > (previousBestByExercise.get(entry.id) ?? 0)) {
-            previousBestByExercise.set(entry.id, estimated);
-          }
-        });
-      });
-    });
-    let newPr = false;
-    customMetrics?.entries?.forEach((entry) => {
-      const previousBest = previousBestByExercise.get(entry.id) ?? 0;
-      const nextBest = Math.max(0, ...entry.sets.filter((set) => set.done)
-        .map((set) => calculate1RM(Number(set.weight), Number(set.reps))));
-      if (nextBest > previousBest) newPr = true;
-    });
-
-    const result: WorkoutResult = {
-      xp: xpGain,
-      duration,
-      exercises: exCount,
-      sets: setCount,
-      volume: vol,
-      newPr,
-      rankedUp,
-    };
-
-    const historyItem: WorkoutHistoryItem = {
-      id: 'w_' + Date.now().toString(36),
-      date: new Date().toISOString(),
-      duration,
-      volume: vol,
-      xp: xpGain,
-      routineName: customMetrics?.routineName || 'Custom Workout',
-      entries: (customMetrics?.entries || []).map((e) => ({
-        id: e.id,
-        sets: e.sets.map((s) => ({
-          weight: s.weight,
-          reps: s.reps,
-          rir: s.rir,
-          done: s.done,
-        })),
-      })),
-    };
-
-    setWorkoutsHistory((prev) => [historyItem, ...prev]);
-
-    setStats((current) => {
-      const nextMuscleCounts = { ...(current.muscleTrainedCount || {}) };
-      if (customMetrics?.muscles) {
-        customMetrics.muscles.forEach((m) => {
-          nextMuscleCounts[m] = (nextMuscleCounts[m] || 0) + 1;
-        });
-      }
-
-      const nextStats = {
-        ...current,
-        level: rankedUp ? current.level + 1 : current.level,
-        xp: rankedUp ? current.xp + xpGain - current.xpToNext : current.xp + xpGain,
-        xpToNext: rankedUp ? current.xpToNext + 250 : current.xpToNext,
-        streak: (() => {
-          const today = new Date();
-          const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
-          const last = workoutsHistory[0]?.date ? new Date(workoutsHistory[0].date) : null;
-          if (!last || Number.isNaN(last.getTime())) return 1;
-          const lastKey = `${last.getFullYear()}-${last.getMonth()}-${last.getDate()}`;
-          if (lastKey === todayKey) return current.streak;
-          const todayStart = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-          const lastStart = Date.UTC(last.getFullYear(), last.getMonth(), last.getDate());
-          return todayStart - lastStart === 86400000 ? current.streak + 1 : 1;
-        })(),
-        workouts: current.workouts + 1,
-        prs: current.prs + (newPr ? 1 : 0),
-        totalVolume: current.totalVolume + result.volume,
-        muscleTrainedCount: nextMuscleCounts,
+  const loadStarterPlan = (custom?: Profile) =>
+    commit((s) => {
+      const profile = custom ?? s.profile,
+        plan = generatePersonalizedPlan(profile);
+      return {
+        ...s,
+        profile: { ...s.profile, daysPerWeek: profile.daysPerWeek },
+        routines: plan.routines,
+        weekSchedule: plan.weekSchedule,
       };
-
-      void syncProfileToCloud(profile, nextStats);
-      return nextStats;
     });
-
-    setLastWorkout(result);
-    void syncWorkoutToCloud(historyItem);
-
-    return result;
+  const logBodyweight = (weight: number) => {
+    if (!Number.isFinite(weight) || weight < 15 || weight > 300)
+      throw new Error("Invalid bodyweight");
+    const log = { date: localDateKey(), weight, timestamp: Date.now() };
+    commit((s) => ({
+      ...s,
+      profile: { ...s.profile, weight },
+      bodyweightLogs: [
+        ...s.bodyweightLogs.filter((l) => l.date !== log.date),
+        log,
+      ].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
   };
-
-  const value = useMemo(
+  const completeOnboarding = (input: Profile) =>
+    commit((s) => {
+      const profile = {
+        ...input,
+        name: input.name.trim(),
+        authUserId: s.profile.authUserId,
+        authEmail: s.profile.authEmail,
+        authProvider: s.profile.authProvider,
+        isPro: s.profile.isPro,
+      };
+      const firstTime =
+        !s.hasOnboarded &&
+        s.baselineXp === 0 &&
+        !s.bodyweightLogs.length &&
+        !s.workoutsHistory.length;
+      if (!firstTime) return { ...s, profile, hasOnboarded: true };
+      const plan = generatePersonalizedPlan(profile);
+      return {
+        ...s,
+        profile,
+        hasOnboarded: true,
+        baselineXp: calculateInitialGamification({
+          benchKg: profile.benchPressPR,
+          squatKg: profile.prSquat,
+          deadliftKg: profile.deadliftPR,
+          bodyweightKg: profile.weight,
+        }).totalExp,
+        routines: plan.routines,
+        weekSchedule: plan.weekSchedule,
+        bodyweightLogs: s.bodyweightLogs.length
+          ? s.bodyweightLogs
+          : [
+              {
+                date: localDateKey(),
+                weight: profile.weight,
+                timestamp: Date.now(),
+              },
+            ],
+      };
+    });
+  const resetOnboarding = async () => {
+    const next = commit((s) => ({ ...s, hasOnboarded: false }));
+    await writeJson(storageKey.current, next);
+  };
+  const updateProfile = (updates: Partial<Profile>) =>
+    commit((s) => ({
+      ...s,
+      profile: {
+        ...s.profile,
+        ...updates,
+        authUserId: s.profile.authUserId,
+        authEmail: s.profile.authEmail,
+        authProvider: s.profile.authProvider,
+        isPro: s.profile.isPro,
+      },
+    }));
+  const setProStatus = (isPro: boolean) =>
+    commit((s) => ({ ...s, profile: { ...s.profile, isPro } }));
+  const login = async (provider: "apple" | "google") => {
+    if (authLock.current) return false;
+    authLock.current = true;
+    const guest = current.current;
+    try {
+      await flushStorage();
+      const user =
+        provider === "apple"
+          ? await signInWithApple()
+          : await signInWithGoogle();
+      if (!user) return false;
+      await activate(user.id, false, guest);
+      await syncPurchasesUser(user.id);
+      const isPro = await checkHasProEntitlement();
+      commit((s) => ({
+        ...s,
+        profile: {
+          ...s.profile,
+          name: user.fullName || s.profile.name,
+          authUserId: user.id,
+          authEmail: user.email,
+          authProvider: provider,
+          isPro: isPro ?? s.profile.isPro,
+        },
+      }));
+      return true;
+    } finally {
+      authLock.current = false;
+    }
+  };
+  const loginPassword = async (identifier: string, pass: string) => {
+    if (authLock.current) return false;
+    authLock.current = true;
+    const guest = current.current;
+    try {
+      await flushStorage();
+      const user = await signInWithPassword(identifier, pass);
+      if (!user) return false;
+      await activate(user.id, false, guest);
+      await syncPurchasesUser(user.id);
+      const isPro = await checkHasProEntitlement();
+      commit((s) => ({
+        ...s,
+        profile: {
+          ...s.profile,
+          name: user.fullName || s.profile.name,
+          authUserId: user.id,
+          authEmail: user.email,
+          authProvider: "email",
+          isPro: isPro ?? s.profile.isPro,
+        },
+      }));
+      return true;
+    } finally {
+      authLock.current = false;
+    }
+  };
+  const logoutAuth = async () => {
+    if (authLock.current) return;
+    authLock.current = true;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      await liveActivity.endActivity();
+      await activate(null);
+      await logOutPurchases();
+      const id = await withTimeout(ensureUserSession());
+      if (id) await activate(id, false, current.current);
+    } finally {
+      authLock.current = false;
+    }
+  };
+  const deleteAccountData = async () => {
+    if (authLock.current) return;
+    authLock.current = true;
+    const id = activeUser.current,
+      key = storageKey.current;
+    const before = current.current;
+    generation.current++;
+    ready.current = false;
+    listenerCleanup.current?.();
+    listenerCleanup.current = null;
+    try {
+      await flushStorage();
+      await deleteUserAccount();
+      if (id) await clearCloudOutboxForUser(id);
+      await removeStored(key);
+      if (id) await removeStored(`@train-xp/workout-draft:${id}`);
+      await liveActivity.endActivity();
+      await activate(null);
+      await logOutPurchases();
+    } catch (error) {
+      ready.current = true;
+      publish(before);
+      void bindPurchases(id, generation.current).catch(() =>
+        setSyncStatus("error"),
+      );
+      throw error;
+    } finally {
+      authLock.current = false;
+    }
+  };
+  const deleteWorkout = (id: string) =>
+    commit((s) => ({
+      ...s,
+      workoutsHistory: s.workoutsHistory.filter((w) => w.id !== id),
+    }));
+  const finishWorkout: AppStateValue["finishWorkout"] = (metrics = {}) => {
+    if (!ready.current || !metrics.sessionId)
+      throw new Error("Workout session is not ready");
+    const existing = current.current.workoutsHistory.find(
+      (w) => w.id === metrics.sessionId,
+    );
+    if (existing)
+      return {
+        xp: existing.xp,
+        duration: existing.duration,
+        exercises: existing.entries.length,
+        sets: existing.entries.reduce(
+          (n, e) => n + e.sets.filter((s) => s.done).length,
+          0,
+        ),
+        volume: existing.volume,
+        newPr: false,
+        rankedUp: false,
+      };
+    const entries = metrics.entries ?? [];
+    if (!entries.some((e) => e.sets.some((s) => s.done)))
+      throw new Error("No completed sets");
+    let volume = 0;
+    for (const entry of entries) {
+      for (const set of entry.sets) {
+        if (!set.done) continue;
+        const weight = Number(set.weight),
+          reps = Number(set.reps);
+        if (
+          !Number.isFinite(weight) ||
+          weight < 0 ||
+          weight > 1000 ||
+          !Number.isInteger(reps) ||
+          reps < 1 ||
+          reps > 100
+        )
+          throw new Error("Invalid completed set");
+        volume += weight * reps;
+      }
+    }
+    const oldStats = current.current.stats;
+    const xp = current.current.profile.isPro ? 250 : 180;
+    const item: WorkoutHistoryItem = {
+      id: metrics.sessionId,
+      date: new Date().toISOString(),
+      duration: metrics.duration ?? "00:00",
+      volume: Math.round(volume),
+      xp,
+      routineName: metrics.routineName ?? "Custom Workout",
+      entries,
+    };
+    const next = commit((s) => ({
+      ...s,
+      workoutsHistory: [item, ...s.workoutsHistory],
+    }));
+    return {
+      ...next.lastWorkout!,
+      newPr: next.stats.prs > oldStats.prs,
+      rankedUp: next.stats.level > oldStats.level,
+    };
+  };
+  const value = useMemo<AppStateValue>(
     () => ({
+      ...snapshot,
       hydrated,
-      hasOnboarded,
-      profile,
-      stats,
-      lastWorkout,
-      routines,
-      weekSchedule,
-      bodyweightLogs,
-      workoutsHistory,
+      syncStatus,
+      retrySync,
       addRoutine,
       updateRoutine,
       deleteRoutine,
-      deleteWorkout,
       assignWeekSchedule,
       loadStarterPlan,
       logBodyweight,
-      finishWorkout,
       completeOnboarding,
       resetOnboarding,
       updateProfile,
       setProStatus,
-      loginApple,
-      loginGoogle,
+      loginApple: () => login("apple"),
+      loginGoogle: () => login("google"),
+      loginPassword,
       logoutAuth,
       deleteAccountData,
+      deleteWorkout,
+      finishWorkout,
     }),
-    [hydrated, hasOnboarded, profile, stats, lastWorkout, routines, weekSchedule, bodyweightLogs, workoutsHistory],
+    [snapshot, hydrated, syncStatus],
   );
-
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+  return (
+    <AppStateContext.Provider value={value}>
+      {children}
+    </AppStateContext.Provider>
+  );
 }
-
 export function useAppState() {
   const context = useContext(AppStateContext);
-  if (!context) throw new Error('useAppState must be used inside AppStateProvider');
+  if (!context)
+    throw new Error("useAppState must be used inside AppStateProvider");
   return context;
 }
